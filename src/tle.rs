@@ -28,21 +28,14 @@ pub fn from_string(tle_string: &str) -> TLE {
     // TLEs can be 2 or 3 lines, account for both cases
     if lines.len() == 3 {
         // Create TLE struct
-        let mut tle = from_lines(lines[1],lines[2]);
-
-        // Extract the common name of the satellite from line 0
-        if lines[0].len() < 1 || lines[0].len() > 24 {
-            println!("TLE string for Line 0 is invalid");
-        } else {
-            tle.common_name = lines[0].to_string();
-        }
+        let tle = from_lines(lines[1],lines[2],Some(lines[0]));
 
         // Return TLE struct
         return tle;
 
     } else if lines.len() == 2 {
         // Create TLE struct
-        let tle = from_lines(lines[0],lines[1]);
+        let tle = from_lines(lines[0],lines[1],None);
 
         // Return TLE struct
         return tle;
@@ -78,7 +71,7 @@ pub fn from_string(tle_string: &str) -> TLE {
     
 }
 
-pub fn from_lines(line1: &str, line2: &str) -> TLE {
+pub fn from_lines(line1: &str, line2: &str, line0: Option<&str>) -> TLE {
     /// Function to parse the TLE lines into a TLE struct
 
     // Create mutable TLE struct
@@ -102,6 +95,16 @@ pub fn from_lines(line1: &str, line2: &str) -> TLE {
         mean_motion: 0.0,
         revolution_number_at_epoch: 0,
     };
+
+    // Extract the common name of the satellite from line 0
+    if let Some(name_line) = line0 {
+        if name_line.len() < 1 || name_line.len() > 24 {
+            println!("TLE string for Line 0 is invalid");
+        } else {
+            tle.common_name = name_line.to_string();
+        }
+    }
+    
     
     // Parse through line 1 and populate TLE struct
     if line1.len() < 69 || line1.len() > 69 {

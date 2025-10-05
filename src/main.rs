@@ -4,6 +4,7 @@ fn main() {
     let tle_string = "ISS (ZARYA)\n1 25544U 98067A   08264.51782528 -.00002182 -00100-2 -11606-4 0  2927\n2 25544  51.6416 247.4627 0006703 130.5360 325.0288 15.72125391563537";
     
     let tle_data = tle::from_string(tle_string);
+    println!("Satellite common name: {}", tle_data.common_name);
     println!("Satellite catalog number: {}", tle_data.satellite_catalog_number);
     println!("Classification: {}", tle_data.classification);
     println!("International designator: {}", tle_data.international_designator);
