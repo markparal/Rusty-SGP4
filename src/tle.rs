@@ -5,9 +5,9 @@ pub struct Tle {
     international_designator: String,
     epoch_year: i32,
     epoch_day: f64,
-    first_derivative_of_mean_motion: f32,
-    second_derivative_of_mean_motion: f32,
-    bstar: f32,
+    first_derivative_of_mean_motion: f64,
+    second_derivative_of_mean_motion: f64,
+    bstar: f64,
     ephemeris_type: i32,
     element_set_number: i32,
     inclination: f32,
@@ -65,8 +65,23 @@ pub fn from_string(tle_string: &str) {
             tle.international_designator = lines[1][9..17].to_string();
             tle.epoch_year = lines[1][18..20].parse::<i32>().unwrap();
             tle.epoch_day = lines[1][20..32].parse::<f64>().unwrap();
+            tle.first_derivative_of_mean_motion = lines[1][33..43].parse::<f64>().unwrap() * 2.0;
+
+            // Account for - in 2nd derivative of mean motion
+            if lines[1][44..45].parse::<char>().unwrap() == '-' {
+                tle.second_derivative_of_mean_motion = format!("-0.{}", lines[1][45..50].trim()).parse::<f64>().unwrap() * 10.0_f64.powi(lines[1][50..52].parse::<i32>().unwrap()) * 6.0_f64; // TODO: Fix floating point precision error
+            } else {
+                tle.second_derivative_of_mean_motion = format!("0.{}", lines[1][45..50].trim()).parse::<f64>().unwrap() * 10.0_f64.powi(lines[1][50..52].parse::<i32>().unwrap()) * 6.0_f64; // TODO: Fix floating point precision error
+            }
+
+            // Account for - in B* term
+            if lines[1][53..54].parse::<char>().unwrap() == '-' {
+                tle.bstar = format!("-0.{}", lines[1][54..59].trim()).parse::<f64>().unwrap() * 10.0_f64.powi(lines[1][59..61].parse::<i32>().unwrap()); // TODO: Fix floating point precision error
+            } else {
+                tle.bstar = format!("0.{}", lines[1][54..59].trim()).parse::<f64>().unwrap() * 10.0_f64.powi(lines[1][59..61].parse::<i32>().unwrap()); // TODO: Fix floating point precision error
+            }
             // TODO: Continue...
-            println!("{} {}", tle.epoch_year, tle.epoch_day);
+            println!("{}", tle.bstar);
         }
 
     } else if lines.len() == 2 {
