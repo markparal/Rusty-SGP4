@@ -19,58 +19,6 @@ pub struct TLE {
     pub revolution_number_at_epoch: i64,
 }
 
-pub fn from_string(tle_string: &str) -> TLE {
-    /// Function to parse the TLE string and return a Tle struct
-    
-    // Split the TLE string into lines
-    let lines = tle_string.split("\n").collect::<Vec<&str>>();
-
-    // TLEs can be 2 or 3 lines, account for both cases
-    if lines.len() == 3 {
-        // Create TLE struct
-        let tle = from_lines(lines[1],lines[2],Some(lines[0]));
-
-        // Return TLE struct
-        return tle;
-
-    } else if lines.len() == 2 {
-        // Create TLE struct
-        let tle = from_lines(lines[0],lines[1],None);
-
-        // Return TLE struct
-        return tle;
-    
-    } else {
-        println!("TLE string is invalid");
-
-        // Make an empty TLE struct
-        let tle = TLE {
-            common_name: String::new(),
-            satellite_catalog_number: 0,
-            classification: '0',
-            international_designator: String::new(),
-            epoch_year: 0,
-            epoch_day: 0.0,
-            first_derivative_of_mean_motion: 0.0,
-            second_derivative_of_mean_motion: 0.0,
-            bstar: 0.0,
-            ephemeris_type: 0,
-            element_set_number: 0,
-            inclination: 0.0,
-            right_ascension_of_ascending_node: 0.0,
-            eccentricity: 0.0,
-            argument_of_perigee: 0.0,
-            mean_anomaly: 0.0,
-            mean_motion: 0.0,
-            revolution_number_at_epoch: 0,
-        };
-
-        // Return TLE struct
-        return tle;
-    }
-    
-}
-
 pub fn from_lines(line1: &str, line2: &str, line0: Option<&str>) -> TLE {
     /// Function to parse the TLE lines into a TLE struct
 
@@ -96,6 +44,12 @@ pub fn from_lines(line1: &str, line2: &str, line0: Option<&str>) -> TLE {
         revolution_number_at_epoch: 0,
     };
 
+    // Validate the TLE checksum
+    if !tle_checksum(line1) || !tle_checksum(line2) {
+        println!("TLE lines are invalid");
+        return tle;
+    }
+
     // Extract the common name of the satellite from line 0
     if let Some(name_line) = line0 {
         if name_line.len() < 1 || name_line.len() > 24 {
@@ -104,7 +58,6 @@ pub fn from_lines(line1: &str, line2: &str, line0: Option<&str>) -> TLE {
             tle.common_name = name_line.to_string();
         }
     }
-    
     
     // Parse through line 1 and populate TLE struct
     if line1.len() < 69 || line1.len() > 69 {
@@ -182,11 +135,96 @@ pub fn from_lines(line1: &str, line2: &str, line0: Option<&str>) -> TLE {
     return tle;
 }
 
-pub fn tle_checksum() -> bool {
+pub fn from_string(tle_string: &str) -> TLE {
+    /// Function to parse the TLE string and return a Tle struct
+    
+    // Split the TLE string into lines
+    let lines = tle_string.split("\n").collect::<Vec<&str>>();
+
+    // TLEs can be 2 or 3 lines, account for both cases
+    if lines.len() == 3 {
+        // Create TLE struct
+        let tle = from_lines(lines[1],lines[2],Some(lines[0]));
+
+        // Return TLE struct
+        return tle;
+
+    } else if lines.len() == 2 {
+        // Create TLE struct
+        let tle = from_lines(lines[0],lines[1],None);
+
+        // Return TLE struct
+        return tle;
+    
+    } else {
+        println!("TLE string is invalid");
+
+        // Make an empty TLE struct
+        let tle = TLE {
+            common_name: String::new(),
+            satellite_catalog_number: 0,
+            classification: '0',
+            international_designator: String::new(),
+            epoch_year: 0,
+            epoch_day: 0.0,
+            first_derivative_of_mean_motion: 0.0,
+            second_derivative_of_mean_motion: 0.0,
+            bstar: 0.0,
+            ephemeris_type: 0,
+            element_set_number: 0,
+            inclination: 0.0,
+            right_ascension_of_ascending_node: 0.0,
+            eccentricity: 0.0,
+            argument_of_perigee: 0.0,
+            mean_anomaly: 0.0,
+            mean_motion: 0.0,
+            revolution_number_at_epoch: 0,
+        };
+
+        // Return TLE struct
+        return tle;
+    }
+    
+}
+
+pub fn calc_checksum(line: &str) -> i32 {
+    /// Function to calculate the checksum of a TLE line
+    /// - Ignore alpha characters
+    /// - Sum digits 0-9 as integer values
+    /// - '-' is treated as 1
+    /// - Return checksum % 10
+
+    // Initialize checksum to 0
+    let mut checksum = 0;
+
+    // Loop through the line and calculate the checksum
+    for c in line.chars().take(68) {
+        match c {
+            '0'..='9' => checksum += (c as u8 - b'0') as i32,
+            '-' => checksum += 1,
+            _ => {}
+        }
+    }
+
+    // Calculate the checksum
+    checksum = checksum % 10;
+
+    // Return the checksum
+    return checksum;
+}
+
+pub fn tle_checksum(line: &str) -> bool {
     /// Validate the TLE hasn't been corrupted by running a checksum test
 
-    // TODO: Write this function!!!
-    return true;
+    // Calculate the checksum of the line
+    let checksum = calc_checksum(line);
+
+    // Compare the checksum to the last character of the line
+    if checksum == line[68..69].parse::<i32>().unwrap() {
+        return true;
+    } else {
+        return false;
+    }
 }
 
 #[cfg(test)]
@@ -195,7 +233,7 @@ mod tests {
 
     #[test]
     fn test_tle_parsing_from_string() {
-        let tle_string = "ISS (ZARYA)\n1 25544U 98067A   08264.51782528 -.00002182 -00100-2 -11606-4 0  2927\n2 25544  51.6416 247.4627 0006703 130.5360 325.0288 15.72125391563537";
+        let tle_string = "ISS (ZARYA)\n1 25544U 98067A   08264.51782528 -.00002182 -00100-2 -11606-4 0  2921\n2 25544  51.6416 247.4627 0006703 130.5360 325.0288 15.72125391563537";
 
         let tle = from_string(tle_string);
 
