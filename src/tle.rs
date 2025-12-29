@@ -9,10 +9,6 @@ use std::fs;
 // Internal Libraries
 // ------------------
 
-// ----------------
-// Global Variables
-// ----------------
-
 // -------
 // Structs
 // -------
@@ -48,7 +44,7 @@ pub struct TLE {
     /// Second time derivative of mean motion \[revs/day^3\]
     pub second_derivative_of_mean_motion: f64,
 
-    /// BSTAR drag term \[1/Earth radii\]
+    /// B* drag term \[1/Earth radii\]
     pub bstar: f64,
 
     /// Ephemeris type (always zero)
@@ -81,6 +77,10 @@ pub struct TLE {
 
 // ---------
 // Enums
+// ---------
+
+// ---------
+// Constants
 // ---------
 
 // ---------
@@ -179,7 +179,6 @@ pub fn from_lines(line1: &str, line2: &str, line0: Option<&str>) -> TLE {
         tle.epoch_day = line1[20..32].trim().parse::<f64>().unwrap();
 
         // 1st derivative of mean motion [revs/day^2]
-        println!("{:?}", &line1[33..43]);
         tle.first_derivative_of_mean_motion = line1[33..43].trim().parse::<f64>().unwrap() * 2.0;
 
         // 2nd derivative of mean motion [revs/days^3]
