@@ -31,5 +31,6 @@ cargo doc
 
 ## Resources
 [Revisiting Spacetrack Report #3: Rev 3](https://celestrak.org/publications/AIAA/2006-6753/AIAA-2006-6753-Rev3.pdf)
+[Fundamentals of Astrodynamics and Applications](https://celestrak.org/software/vallado-sw.php)
 [Fundamentals of Astrodynamics Github Repository](https://github.com/CelesTrak/fundamentals-of-astrodynamics?tab=readme-ov-file)
 [History of Analytical Orbit Modeling in the U. S. Space Surveillance System](https://arc.aiaa.org/doi/abs/10.2514/1.9161?journalCode=jgcd)

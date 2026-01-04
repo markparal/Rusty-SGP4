@@ -19,7 +19,7 @@ use std::fs;
 ///
 /// References:
 /// - [Celestrak TLE Format](https://celestrak.org/columns/v04n03/#FAQ01)
-pub struct TLE {
+pub struct Tle {
     /// Common name of the satellite (e.g., "ISS (ZARYA)")
     pub common_name: String,
 
@@ -87,7 +87,7 @@ pub struct TLE {
 // Functions
 // ---------
 
-/// Builds a [`TLE`] struct from the lines of a Two-Line Element set.
+/// Builds a [`Tle`] struct from the lines of a Two-Line Element set.
 ///
 /// Given the two required TLE lines (line 1 and line 2), and an optional
 /// name line (line 0), this function parses the input into a [`TLE`] struct.
@@ -102,7 +102,7 @@ pub struct TLE {
 /// * If the TLE lines (1 and 2) are invalid (checksum fails)
 ///
 /// # Returns
-/// * [`TLE`] struct containing the parsed TLE data.
+/// * [`Tle`] - Struct containing the parsed TLE data.
 ///
 /// # Examples
 /// ```rust
@@ -120,9 +120,9 @@ pub struct TLE {
 ///
 /// # References
 /// - [Celestrak TLE Format](https://celestrak.org/columns/v04n03/#FAQ01)
-pub fn from_lines(line1: &str, line2: &str, line0: Option<&str>) -> TLE {
+pub fn from_lines(line1: &str, line2: &str, line0: Option<&str>) -> Tle {
     // Create mutable TLE struct
-    let mut tle = TLE {
+    let mut tle = Tle {
         common_name: String::new(),
         satellite_catalog_number: 0,
         classification: '0',
@@ -234,7 +234,7 @@ pub fn from_lines(line1: &str, line2: &str, line0: Option<&str>) -> TLE {
     return tle;
 }
 
-/// Builds a vector of [`TLE`] structs from a string containing Two-Line Element sets.
+/// Builds a vector of [`Tle`] structs from a string containing Two-Line Element sets.
 ///
 /// This function parses a string containing one or more TLEs in either
 /// 2-line or 3-line (name + 2 lines) format and returns all successfully
@@ -244,7 +244,7 @@ pub fn from_lines(line1: &str, line2: &str, line0: Option<&str>) -> TLE {
 /// * `tle_string` - A string containing one or more Two-Line Element sets
 ///
 /// # Returns
-/// A `Vec<TLE>` containing all successfully parsed TLEs.
+/// * `Vec<Tle>` - A vector containing all successfully parsed TLEs
 ///
 /// # Examples
 /// ```rust
@@ -261,7 +261,7 @@ pub fn from_lines(line1: &str, line2: &str, line0: Option<&str>) -> TLE {
 ///
 /// # References
 /// - [Celestrak TLE Format](https://celestrak.org/columns/v04n03/#FAQ01)
-pub fn from_string(tle_string: &str) -> Vec<TLE> {
+pub fn from_string(tle_string: &str) -> Vec<Tle> {
     // Parse the string into lines, removing spaces
     let lines: Vec<&str> = tle_string
         .lines()
@@ -310,7 +310,7 @@ pub fn from_string(tle_string: &str) -> Vec<TLE> {
     return tles;
 }
 
-/// Builds a vector of [`TLE`] structs from a file containing Two-Line Element sets.
+/// Builds a vector of [`Tle`] structs from a file containing Two-Line Element sets.
 ///
 /// This function parses a file containing one or more TLEs in either
 /// 2-line or 3-line (name + 2 lines) format and returns all successfully
@@ -320,7 +320,7 @@ pub fn from_string(tle_string: &str) -> Vec<TLE> {
 /// * `file_path` - A path to a file containing one or more Two-Line Element sets
 ///
 /// # Returns
-/// A `Vec<TLE>` containing all successfully parsed TLEs.
+/// * `Vec<Tle>` - A vector containing all successfully parsed TLEs.
 ///
 /// # Examples
 /// ```rust
@@ -337,7 +337,7 @@ pub fn from_string(tle_string: &str) -> Vec<TLE> {
 ///
 /// # References
 /// - [Celestrak TLE Format](https://celestrak.org/columns/v04n03/#FAQ01)
-pub fn from_file(file_path: &str) -> Vec<TLE> {
+pub fn from_file(file_path: &str) -> Vec<Tle> {
     // Open the TLE file
     let tle_string = fs::read_to_string(file_path)
         .expect("Cannot read TLE file");
@@ -364,7 +364,7 @@ pub fn from_file(file_path: &str) -> Vec<TLE> {
 /// * If the TLE line is invalid (must be 69 characters)
 ///
 /// # Returns
-/// * The checksum of the TLE line (integer 0-9)
+/// * `checksum` - The checksum of the TLE line (integer 0-9)
 ///
 /// # Examples
 /// ```rust
@@ -405,7 +405,7 @@ pub fn calc_checksum(line: &str) -> i32 {
 /// * `line` - The TLE line to check the checksum of
 ///
 /// # Returns
-/// * The checksum of the TLE line (integer 0-9)
+/// * `bool` - True if the checksum of the line is valid, false if otherwise
 ///
 /// # Examples
 /// ```rust
