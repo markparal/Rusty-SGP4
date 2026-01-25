@@ -502,26 +502,27 @@ pub fn init_sgp4(tle: Tle, wgs: Option<Wgs>) -> Sgp4 {
 
     // Extract TLE contents in proper units
     let i0 = deg2rad(tle.inclination);
-    let n0 = tle.mean_motion;
+    let n0_kozai = tle.mean_motion;
     let e0 = tle.eccentricity;
     let omega0 = deg2rad(tle.argument_of_perigee);
     let raan0 = deg2rad(tle.right_ascension_of_ascending_node);
     let m0 = deg2rad(tle.mean_anomaly);
+    let eta0 = (1. - e0.powi(2)).sqrt();
     let bstar = tle.bstar;
 
     // Extract TLE epoch in Julian day format
-    let (tle_year, tle_month, tle_day, tle_hour, tle_minute, tle_second) = dayofyr2utc(tle.epoch_year, tle.epoch_day).unwrap();
-    let (tle_jd, tle_jdfrac) = utc2jday(tle_year, tle_month, tle_day, tle_hour, tle_minute, tle_second).unwrap();
+    let (year0, month0, day0, hour0, minute0, second0) = dayofyr2utc(tle.epoch_year, tle.epoch_day).unwrap();
+    let (jd0, jdfrac0) = utc2jday(year0, month0, day0, hour0, minute0, second0).unwrap();
 
     // Recover the Brouer mean motion from the Kozai mean motion (mean motion in TLE)
     let ke = wgs_sgp4.mu.sqrt() / wgs_sgp4.r_earth_eq.powf(1.5) * 60.; // [(Earth radii)^1.5 / min]
     let k2 = 0.5 * wgs_sgp4.j2; // [(Earth radii)^2]
-    let a1 = (ke / n0).powf(2./3.);
+    let a1 = (ke / n0_kozai).powf(2./3.);
     let delta1 = (3./2.) * (k2 / a1.powf(2.)) * (3. * i0.cos().powf(2.) - 1.) / (1. - e0.powf(2.)).powf(3./2.);
     let a2 = a1 * (1. - (1./3.) * delta1 - delta1.powf(2.) - (134./81.) * delta1.powf(3.));
     let delta0 = (3./2.) * (k2 / a2.powf(2.)) * (3. * i0.cos().powf(2.) - 1.) / (1. - e0.powf(2.)).powf(3./2.);
-    let n0_brouwer = n0 / (1. + delta0);
-    let a0 = (ke / n0_brouwer).powf(2./3.);
+    let n0 = n0_kozai / (1. + delta0);
+    let a0 = (ke / n0).powf(2./3.);
 
     // Atmospheric drag
     let a30 = -wgs_sgp4.j3 * wgs_sgp4.r_earth_eq.powf(3.);
@@ -554,6 +555,7 @@ pub fn init_sgp4(tle: Tle, wgs: Option<Wgs>) -> Sgp4 {
     let raandot = (-3. * k2 * theta / (a0.powf(2.) * beta0.powf(4.)) + 3. * k2.powf(2.) * (4. * theta - 19. * theta.powf(3.)) / (2. * a0.powf(4.) * beta0.powf(8.)) + 5. * k4 * theta * (3. - 7. * theta.powf(2.)) / (2. * a0.powf(4.) * beta0.powf(8.))) * n0_brouwer;
 
     // Lunar and solar gravity effects
+    let (e_ls_dot, i_ls_dot, m_ls_dot, raan_ls_dot, omega_ls_dot) = init_lunar_solar_effects(jd0, jdfrac0, i0, n0, e0, omega0, raan0, eta0).unwrap();
 
     // Earth gravity resonance effects
 
@@ -577,17 +579,185 @@ pub fn init_sgp4(tle: Tle, wgs: Option<Wgs>) -> Sgp4 {
 /// # Examples
 /// ```rust
 /// ```
-pub fn init_lunar_solar_effects(tle_jd: f64, tle_jdfrac: f64) -> i32 {
+pub fn init_lunar_solar_effects(jd0: f64, jdfrac0: f64, i0: f64, n0: f64, e0: f64, omega0: f64, raan0: f64, eta0: f64) -> (f64, f64, f64, f64, f64) {
+    // Obliquity of the ecliptic plane \[rad\]
+    let eps = deg2rad(23.4441);
+    let sin_eps = eps.sin();
+    let cos_eps = eps.cos();
+
+    // Lunar/Solar element epochs (12/31/1899 12:00:00 UTC) \[Julian date\]
+    let epoch_sm = 2415020.0;
+    
+    // Lunar constants
+    // Moon's inclination with respect to the ecliptic plane \[rad\]
+    let i_me = deg2rad(5.145396374);
+    let sin_i_me = i_me.sin();
+    let cos_i_me = i_me.cos();
+
+    // Lunar eccentricity
+    let e_m = 0.05490;
+
+    // Lunar mean motion \[rad/min\]
+    let n_m = 1.583521770e-4;
+
+    // Lunar perturbation coefficient \[rad/min\]
+    let c_m = 4.796806521e-7;
+
+    // Lunar right ascension of the ascending node (RAAN) with respect to the ecliptic plane at epoch \[rad\]
+    let raan_me0 = 4.5236020;
+
+    // Lunar right ascension of the ascending node (RAAN) with respect to the ecliptic plane time rate of change at epoch \[rad/day\]
+    let raan_me0_dot = -9.2422029e-4;
+
+    // Lunar longitude of perigee with respect to the ecliptic plane at epoch \[rad\]
+    let u_me0 = 5.8351514;
+
+    // Lunar longitude of perigee with respect to the ecliptic plane time rate of change at epoch \[rad/day\]
+    let u_me0_dot = 0.0019443680;
+
+    // Solar constants
+    // Solar inclination \[rad\]
+    let i_s = deg2rad(23.4441);
+    let sin_i_s = i_s.sin();
+    let cos_i_s = i_s.cos();
+
+    // Solar eccentricity
+    let e_s = 0.01675;
+
+    // Solar mean motion \[rad/min\]
+    let n_s = 1.19459e-5;
+
+    // Solar right ascension of the ascending node (RAAN) \[rad\]
+    let raan_s = 0.0;
+
+    // Solar argument of periapsis \[rad\]
+    let omega_s = deg2rad(281.2208);
+
+    // Solar perturbation coefficient \[rad/min\]
+    let c_s = 2.98647972e-6;
+
+    // Solar mean anomaly at epoch \[rad\]
+    let m_s0 = 6.2565837;
+
+    // Solar mean anomaly time rate of change at epoch \[rad/day\]
+    let m_s0_dot = 0.017201977;
+
     // Find the difference in time between the Solar / Lunar epoch and the TLE epoch
+    let delta_t = tle_jd + tle_jdfrac - epoch_sm;
 
     // Calculate the Lunar RAAN wrt to the ecliptic plane at TLE epoch
+    let raan_me = (raan_me0 + raan_me0_dot * delta_t).rem_euclid(2.0 * PI);
+    let sin_raan_me = raan_me.sin();
+    let cos_raan_me = raan_me.cos();
 
-    // Calculate the Lunar inclination at TLE epoch
+    // Calculate the Lunar inclination at TLE epoch (this formula is fine because lunar inclination never is negative)
+    let i_m = (cos_eps * cos_i_me - sin_eps * sin_i_me * cos_raan_me).clamp(-1.0, 1.0).acos();
+    let sin_i_m = i_m.sin();
+    let cos_i_m = i_m.cos();
 
     // Calculate the Lunar longitude of perigee referred to the ecliptic
+    let gamma_m = u_me0 + u_me0_dot * delta_t;
 
-    // 
-    return 0;
+    // Calculate the Lunar RAAN \[rad\]
+    let sin_raan_m = (sin_i_me * sin_raan_me) / sin_i_m;
+    let cos_raan_m = (cos_i_me * sin_eps + cos_eps * sin_i_me * cos_raan_me) / sin_i_m;
+    let raan_m = sin_raan_m.atan2(cos_raan_m);
+
+    // Calculate the Lunar phase shift \[rad\]
+    let sin_delta = (sin_eps * sin_raan_me) / sin_i_m;
+    let cos_delta = cos_raan_m * cos_raan_me + sin_raan_m * sin_raan_me * cos_eps;
+    let delta = sin_delta.atan2(cos_delta);
+
+    // Calculate the Lunar argument of periapsis \[rad\]
+    let omega_m = gamma_m - raan_me + delta;
+
+    // Calculate the Solar mean anomaly \[rad\]
+    let m_s = (m_s0 + m_s0_dot * delta_t).rem_euclid(2.0 * PI);
+
+    // Calculate the Lunar secular rates
+    let (a_m_dot, e_m_dot, i_m_dot, m_m_dot, raan_m_dot, omega_m_dot) = calc_lunar_solar_secular_rates(i_m, n_m, omega_m, raan_m, c_m, i0, n0, e0, omega0, raan0, eta0).unwrap();
+
+    // Calculate the Solar secular rates
+    let (a_s_dot, e_s_dot, i_s_dot, m_s_dot, raan_s_dot, omega_s_dot) = calc_lunar_solar_secular_rates(i_s, n_s, omega_s, raan_s, c_s, i0, n0, e0, omega0, raan0, eta0).unwrap();
+
+    // Calculate the combined 3rd body secular rates
+    let e_ls_dot = e_m_dot + e_s_dot;
+    let i_ls_dot = i_m_dot + i_s_dot;
+    let m_ls_dot = m_m_dot + m_s_dot;
+    let raan_ls_dot = raan_m_dot + raan_s_dot;
+    let omega_ls_dot = omega_m_dot + omega_s_dot;
+
+    return Ok((e_ls_dot, i_ls_dot, m_ls_dot, raan_ls_dot, omega_ls_dot));
+}
+
+pub fn calc_lunar_solar_secular_rates(i_x: f64, n_x: f64, omega_x: f64, raan_x: f64, c_x: f64, i0: f64, n0: f64, e0: f64, omega0: f64, raan0: f64, eta0: f64) -> (f64, f64, f64, f64, f64, f64) {
+    // Precompute common quantities
+    let cos_raan_diff = (raan0 - raan_x).cos();
+    let sin_raan_diff = (raan0 - raan_x).sin();
+    let cos_omega_x = omega_x.cos();
+    let sin_omega_x = omega_x.sin();
+    let cos_omega0 = omega0.cos();
+    let sin_omega0 = omega0.sin();
+    let cos_i_x = i_x.cos();
+    let sin_i_x = i_x.sin();
+    let cos_i0 = i0.cos();
+    let sin_i0 = i0.sin();
+
+    // Calculate 3rd body constants
+    let a1 = cos_omega_x * cos_raan_diff + sin_omega_x * cos_i_x * sin_raan_diff;
+    let a3 = -sin_omega_x * cos_raan_diff + cos_omega_x * cos_i_x * sin_raan_diff;
+    let a7 = -cos_omega_x * sin_raan_diff + sin_omega_x * cos_i_x * cos_raan_diff;
+    let a8 = sin_omega_x * sin_i_x;
+    let a9 = sin_omega_x * sin_raan_diff + cos_omega_x * cos_i_x * cos_raan_diff;
+    let a10 = cos_omega_x * sin_i_x;
+    let a2 = a7 * cos_i0 + a8 * sin_i0;
+    let a4 = a9 * cos_i0 + a10 * sin_i0;
+    let a5 = -a7 * sin_i0 + a8 * cos_i0;
+    let a6 = -a9 * sin_i0 + a10 * cos_i0;
+
+    let x1 = a1 * cos_omega0 + a2 * sin_omega0;
+    let x2 = a3 * cos_omega0 + a4 * sin_omega0;
+    let x3 = -a1 * sin_omega0 + a2 * cos_omega0;
+    let x4 = -a3 * sin_omega0 + a4 * cos_omega0;
+    let x5 = a5 * sin_omega0;
+    let x6 = a6 * sin_omega0;
+    let x7 = a5 * cos_omega0;
+    let x8 = a6 * cos_omega0;
+    
+    let z31 = 12. * x1.powi(2) - 3. * x3.powi(2);
+    let z32 = 24. * x1 * x2 - 6. * x3 * x4;
+    let z33 = 12. * x2.powi(2) - 3. * x4.powi(2);
+    let z1 = 6. * (a1.powi(2) + a2.powi(2)) + (1. + e0.powi(2)) * z31;
+    let z2 = 12. * (a1 * a3 + a2 * a4) + (1 + e0.powi(2)) * z32;
+    let z3 = 6. * (a3.powi(2) + a4.powi(2)) + (1 + e0.powi(2)) * z33;
+    let z11 = -6. * a1 * a5 + e0.powi(2) * (-24. * x1 * x7 - 6. * x3 * x5);
+    let z13 = -6. * a3 * a6 + e0.powi(2) * (-24. * x2 * x8 - 6. * x4 * x6);
+    let z21 = 6. * a2 * a5 + e0.powi(2) * (24. * x1 * x5 - 6. * x3 * x7);
+    let z23 = 6. * a4 * a6 + e0.powi(2) * (24. * x2 * x6 - 6. * x4 * x8);
+    let z22 = 6. * a4 * a5 + 6. * a2 * a6 + e0.powi(2) * (24. * x2 * x5 + 24. * x1 * x6 - 6. * x4 * x7 - 6. * x3 * x8);
+    let z12 = -6. * a1 * a6 - 6. * a3 * a5 - e0.powi(2) * (24. * x2 * x7 + 24. * x1 * x8 + 6. * x3 * x6 + 6. * x4 * x5);
+
+    // Calculate secular rates
+    let a_x_dot = 0.;
+    
+    let e_x_dot = -15. * c_x * n_x * (e0 * eta0 / n0) * (x1 * x3 + x2 * x4);
+    
+    let i_x_dot = (-c_x * n_x / (2. * n0 * eta0)) * (z11 + z13);
+    
+    let m_x_dot = (-c_x * n_x / n0) * (z1 + z3 - 14. - 6. * e0.powi(2));
+    
+    let mut raan_x_dot = 0.;
+    if i0 >= deg2rad(3.) {
+        raan_x_dot = c_x * n_x / (2. * n0 * eta0 * sin_i0) * (z21 + z23);
+    }
+
+    let mut omega_x_dot = c_x * n_x * eta0 / n0 * (z31 + z33 - 6.);
+    if i0 >= deg2rad(3.) {
+        omega_x_dot = omega_x_dot - raan_x_dot * cos_i0;
+    }
+
+    // Return secular rates
+    return Ok((a_x_dot, e_x_dot, i_x_dot, m_x_dot, raan_x_dot, omega_x_dot))
 }
 
 // ----------
