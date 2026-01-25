@@ -32,7 +32,7 @@ pub struct Tle {
     /// International designator (launch year, launch number, piece)
     pub international_designator: String,
 
-    /// Epoch year (two-digit TLE year, e.g. 24 → 2024)
+    /// Epoch year (e.g. 2024)
     pub epoch_year: i32,
 
     /// Epoch day of year, including fractional portion
@@ -173,7 +173,12 @@ pub fn from_lines(line1: &str, line2: &str, line0: Option<&str>) -> Tle {
         tle.international_designator = line1[9..17].trim().to_string();
 
         // Epoch year (last two numbers)
-        tle.epoch_year = line1[18..20].trim().parse::<i32>().unwrap();
+        let yr_two_digit = line1[18..20].trim().parse::<i32>().unwrap();
+        if yr_two_digit < 57 {
+            tle.epoch_year = 2000 + yr_two_digit
+        } else {
+            tle.epoch_year = 1900 + yr_two_digit
+        }
 
         // Epoch day of year
         tle.epoch_day = line1[20..32].trim().parse::<f64>().unwrap();
@@ -480,7 +485,7 @@ mod tests {
         assert_eq!(tle.satellite_catalog_number, 25544);
         assert_eq!(tle.classification, 'U');
         assert_eq!(tle.international_designator, "98067A");
-        assert_eq!(tle.epoch_year, 8);
+        assert_eq!(tle.epoch_year, 2008);
         assert_eq!(tle.epoch_day, 264.51782528);
         assert_eq!(tle.first_derivative_of_mean_motion, -0.00004364);
         assert!((tle.second_derivative_of_mean_motion + 6.0e-5).abs() < 1e-12);
@@ -510,7 +515,7 @@ mod tests {
         assert_eq!(tle.satellite_catalog_number, 25544);
         assert_eq!(tle.classification, 'U');
         assert_eq!(tle.international_designator, "98067A");
-        assert_eq!(tle.epoch_year, 8);
+        assert_eq!(tle.epoch_year, 2008);
         assert_eq!(tle.epoch_day, 264.51782528);
         assert_eq!(tle.first_derivative_of_mean_motion, -0.00004364);
         assert!((tle.second_derivative_of_mean_motion + 6.0e-5).abs() < 1e-12);
@@ -544,7 +549,7 @@ mod tests {
         assert_eq!(iss_tle.satellite_catalog_number, 25544);
         assert_eq!(iss_tle.classification, 'U');
         assert_eq!(iss_tle.international_designator, "98067A");
-        assert_eq!(iss_tle.epoch_year, 8);
+        assert_eq!(iss_tle.epoch_year, 2008);
         assert_eq!(iss_tle.epoch_day, 264.51782528);
         assert_eq!(iss_tle.first_derivative_of_mean_motion, -0.00004364);
         assert!((iss_tle.second_derivative_of_mean_motion + 6.0e-5).abs() < 1e-12);
@@ -563,7 +568,7 @@ mod tests {
         assert_eq!(hulianwang_tle.satellite_catalog_number, 66957);
         assert_eq!(hulianwang_tle.classification, 'U');
         assert_eq!(hulianwang_tle.international_designator, "25287E");
-        assert_eq!(hulianwang_tle.epoch_year, 25);
+        assert_eq!(hulianwang_tle.epoch_year, 2025);
         assert_eq!(hulianwang_tle.epoch_day, 346.69967332);
         assert_eq!(hulianwang_tle.first_derivative_of_mean_motion, -0.00000302);
         assert_eq!(hulianwang_tle.second_derivative_of_mean_motion, 0.0);
