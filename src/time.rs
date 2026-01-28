@@ -155,8 +155,8 @@ pub enum Timezone {
 /// ```
 ///
 /// # References
-/// - [Fundamentals of Astrodynamics and Applications](https://celestrak.org/software/vallado-sw.php)
-/// - [Satellite Orbits](https://link.springer.com/book/10.1007/978-3-642-58351-3)
+/// - [Fundamentals of Astrodynamics and Applications by Vallado et al](https://celestrak.org/software/vallado-sw.php)
+/// - [Satellite Orbits by Montenbruck et al](https://link.springer.com/book/10.1007/978-3-642-58351-3)
 pub fn utc2jday(utc_datetime: DateTime) -> Result<(f64, f64), DateError> {
     // Calculate the MJD
     let (mjd, mjdfrac) = utc2mjday(utc_datetime)?;
@@ -213,8 +213,8 @@ pub fn utc2jday(utc_datetime: DateTime) -> Result<(f64, f64), DateError> {
 /// ```
 ///
 /// # References
-/// - [Fundamentals of Astrodynamics and Applications](https://celestrak.org/software/vallado-sw.php)
-/// - [Satellite Orbits](https://link.springer.com/book/10.1007/978-3-642-58351-3)
+/// - [Fundamentals of Astrodynamics and Applications by Vallado et al](https://celestrak.org/software/vallado-sw.php)
+/// - [Satellite Orbits by Montenbruck et al](https://link.springer.com/book/10.1007/978-3-642-58351-3)
 pub fn utc2mjday(utc_datetime: DateTime) -> Result<(f64, f64), DateError> {
     // Verify that datetime is UTC
     if utc_datetime.timezone != Timezone::UTC {

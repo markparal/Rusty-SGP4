@@ -21,6 +21,8 @@ I am pursuing this project for two reasons
 - Implement SGP4 equations
 - Write a math spec
 - Include a visualizer?
+- Fit data to a TLE?
+- Conjunction screening?
 
 ## Testing and Documentation
 ```bash
