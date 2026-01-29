@@ -3,6 +3,7 @@
 // ------------------
 // External Libraries
 // ------------------
+use std::f64::consts::PI;
 
 // ------------------
 // Internal Libraries
@@ -18,6 +19,7 @@
 ///
 /// References:
 /// - [Revisiting Spacetrack Report #3: Rev 3 by Vallado et al](https://celestrak.org/publications/AIAA/2006-6753/AIAA-2006-6753-Rev3.pdf)
+#[derive(Clone, Copy)]
 pub struct Wgs {
     /// Earth's standard gravitational parameter \[km^3/s^2\]
     pub mu: f64,
@@ -41,7 +43,7 @@ pub struct Wgs {
     pub k4: f64,
 
     /// The square root of the standard gravitational parameter  \[Earth radii^1.5 / min\]
-    pub ke: f64
+    pub ke: f64,
 
     /// The inverse of ke \[min / Earth radii^1.5\]
     pub tumin: f64,
@@ -77,7 +79,7 @@ pub struct Wgs {
 ///
 /// References:
 /// - [Revisiting Spacetrack Report #3: Rev 3 by Vallado et al](https://celestrak.org/publications/AIAA/2006-6753/AIAA-2006-6753-Rev3.pdf)
-const WGS72: Wgs = Wgs {
+pub const WGS72: Wgs = Wgs {
     mu: 398600.8,
     r_earth_eq: 6378.135,
     j2: 0.001082616,
@@ -111,7 +113,7 @@ const WGS72: Wgs = Wgs {
 /// 
 /// References:
 /// - [Revisiting Spacetrack Report #3: Rev 3 by Vallado et al](https://celestrak.org/publications/AIAA/2006-6753/AIAA-2006-6753-Rev3.pdf)
-const WGS84: Wgs = Wgs {
+pub const WGS84: Wgs = Wgs {
     mu: 398600.5,
     r_earth_eq: 6378.137,
     j2: 0.00108262998905,
@@ -148,16 +150,36 @@ const WGS84: Wgs = Wgs {
 /// ```
 pub fn deg2rad(theta: f64) -> f64 {
     // Convert to radians
-    let theta_rad = PI / 180.0 * theta;
+    let theta_rad = PI / 180. * theta;
 
     // Return theta in radians
     return theta_rad;
 }
 
-/// TODO
-pub fn calc_period(a: f64, mu: f64) -> (f64) {
+/// Calculate the period of an orbit given the semi-major axis and the standard gravitational parameter.
+///
+/// # Arguments
+/// * `a` - The semi-major axis \[km\]
+/// * `mu` - The standard gravitational parameter \[km^3 / s^2\]
+///
+/// # Returns
+/// * `period` - The period in minutes \[min\]
+///
+/// # Examples
+/// ```rust
+/// // Define the semi-major axis and the standard gravitational parameter
+/// let a = 6378.137; // [km]
+/// let mu = 398600.5; // [km^3 / s^2]
+///
+/// // Calculate the period
+/// let period = calc_period(a, mu);
+/// ```
+///
+/// # References
+/// - [Revisiting Spacetrack Report #3: Rev 3 by Vallado et al](https://celestrak.org/publications/AIAA/2006-6753/AIAA-2006-6753-Rev3.pdf)
+pub fn calc_period(a: f64, mu: f64) -> f64 {
     // Calculate time period in minutes
-    period = 2 * PI * (a.powi(3) / mu).sqrt() / 60.;
+    let period = 2. * PI * (a.powi(3) / mu).sqrt() / 60.;
 
     return period;
 }

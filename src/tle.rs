@@ -19,6 +19,7 @@ use std::fs;
 ///
 /// References:
 /// - [Celestrak TLE Format](https://celestrak.org/columns/v04n03/#FAQ01)
+#[derive(Default, Clone)]
 pub struct Tle {
     /// Common name of the satellite (e.g., "ISS (ZARYA)")
     pub common_name: String,
@@ -90,7 +91,7 @@ pub struct Tle {
 /// Builds a [`Tle`] struct from the lines of a Two-Line Element set.
 ///
 /// Given the two required TLE lines (line 1 and line 2), and an optional
-/// name line (line 0), this function parses the input into a [`TLE`] struct.
+/// name line (line 0), this function parses the input into a [`Tle`] struct.
 ///
 /// # Arguments
 /// * `line1` - The first TLE data line (NORAD line 1)

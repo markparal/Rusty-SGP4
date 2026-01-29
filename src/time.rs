@@ -150,14 +150,14 @@ pub enum Timezone {
 ///     timezone: Timezone::UTC,
 /// };
 ///
-/// let (jd, jdfrac) = utc2jday(datetime)?;
+/// let (jd, jdfrac) = utc2jday(&datetime)?;
 /// let jd_total = jd + jdfrac;
 /// ```
 ///
 /// # References
 /// - [Fundamentals of Astrodynamics and Applications by Vallado et al](https://celestrak.org/software/vallado-sw.php)
 /// - [Satellite Orbits by Montenbruck et al](https://link.springer.com/book/10.1007/978-3-642-58351-3)
-pub fn utc2jday(utc_datetime: DateTime) -> Result<(f64, f64), DateError> {
+pub fn utc2jday(utc_datetime: &DateTime) -> Result<(f64, f64), DateError> {
     // Calculate the MJD
     let (mjd, mjdfrac) = utc2mjday(utc_datetime)?;
 
@@ -208,14 +208,14 @@ pub fn utc2jday(utc_datetime: DateTime) -> Result<(f64, f64), DateError> {
 ///     timezone: Timezone::UTC,
 /// };
 ///
-/// let (mjd, mjdfrac) = utc2mjday(datetime)?;
+/// let (mjd, mjdfrac) = utc2mjday(&datetime)?;
 /// let mjd_total = mjd + mjdfrac;
 /// ```
 ///
 /// # References
 /// - [Fundamentals of Astrodynamics and Applications by Vallado et al](https://celestrak.org/software/vallado-sw.php)
 /// - [Satellite Orbits by Montenbruck et al](https://link.springer.com/book/10.1007/978-3-642-58351-3)
-pub fn utc2mjday(utc_datetime: DateTime) -> Result<(f64, f64), DateError> {
+pub fn utc2mjday(utc_datetime: &DateTime) -> Result<(f64, f64), DateError> {
     // Verify that datetime is UTC
     if utc_datetime.timezone != Timezone::UTC {
         return Err(DateError::DateNotUTC);
@@ -235,8 +235,8 @@ pub fn utc2mjday(utc_datetime: DateTime) -> Result<(f64, f64), DateError> {
     let second = utc_datetime.second as f64;
 
     // Modify month and year to account for leap years, start year in March instead of January
-    let mut year_leap: f64;
-    let mut month_leap: f64;
+    let year_leap: f64;
+    let month_leap: f64;
     if month <= 2. {
         year_leap = year - 1.;
         month_leap = month + 12.;
@@ -413,7 +413,7 @@ mod tests {
             timezone: Timezone::UTC
         };
         
-        let (jd1, jdfrac1) = utc2jday(datetime1).unwrap();
+        let (jd1, jdfrac1) = utc2jday(&datetime1).unwrap();
         let jd1_total = jd1 + jdfrac1;
         let jd1_expect = 2436653.024179664440453;
         assert!((jd1_total - jd1_expect).abs() < 1e-8,"Julian Date Test failed: expected {}, got {}", jd1_expect, jd1_total);
@@ -429,7 +429,7 @@ mod tests {
             timezone: Timezone::UTC
         };
 
-        let (jd2, jdfrac2) = utc2jday(datetime2).unwrap();
+        let (jd2, jdfrac2) = utc2jday(&datetime2).unwrap();
         let jd2_total = jd2 + jdfrac2;
         let jd2_expect = 2461063.507326377090067;
         assert!((jd2_total - jd2_expect).abs() < 1e-8,"Julian Date Test failed: expected {}, got {}", jd2_expect, jd2_total);
@@ -445,7 +445,7 @@ mod tests {
             timezone: Timezone::UTC
         };
 
-        let (jd3, jdfrac3) = utc2jday(datetime3).unwrap();
+        let (jd3, jdfrac3) = utc2jday(&datetime3).unwrap();
         let jd3_total = jd3 + jdfrac3;
         let jd3_expect = 2451544.5;
         assert!((jd3_total - jd3_expect).abs() < 1e-8,"Julian Date Test failed: expected {}, got {}", jd3_expect, jd3_total);
@@ -461,7 +461,7 @@ mod tests {
             timezone: Timezone::UTC
         };
 
-        let result = utc2jday(datetime4);
+        let result = utc2jday(&datetime4);
         assert!(result.is_err(), "Should return error for date before Oct 10, 1582");
         assert_eq!(result.unwrap_err(), DateError::DateTooEarly);
 
@@ -476,7 +476,7 @@ mod tests {
             timezone: Timezone::UT1
         };
 
-        let result = utc2jday(datetime5);
+        let result = utc2jday(&datetime5);
         assert!(result.is_err(), "Should return error for non-UTC date");
         assert_eq!(result.unwrap_err(), DateError::DateNotUTC);
     }
@@ -494,7 +494,7 @@ mod tests {
             timezone: Timezone::UTC
         };
         
-        let (mjd1, mjdfrac1) = utc2mjday(datetime1).unwrap();
+        let (mjd1, mjdfrac1) = utc2mjday(&datetime1).unwrap();
         let mjd1_total = mjd1 + mjdfrac1;
         let mjd1_expect = 50540.675410937503329;
         assert!((mjd1_total - mjd1_expect).abs() < 1e-8,"Modified Julian Date Test failed: expected {}, got {}", mjd1_expect, mjd1_total);
@@ -510,7 +510,7 @@ mod tests {
             timezone: Timezone::UTC
         };
 
-        let (mjd2, mjdfrac2) = utc2mjday(datetime2).unwrap();
+        let (mjd2, mjdfrac2) = utc2mjday(&datetime2).unwrap();
         let mjd2_total = mjd2 + mjdfrac2;
         let mjd2_expect = 56516.118028043973027;
         assert!((mjd2_total - mjd2_expect).abs() < 1e-8,"Modified Julian Date Test failed: expected {}, got {}", mjd2_expect, mjd2_total);
@@ -526,7 +526,7 @@ mod tests {
             timezone: Timezone::UTC
         };
 
-        let (mjd3, mjdfrac3) = utc2mjday(datetime3).unwrap();
+        let (mjd3, mjdfrac3) = utc2mjday(&datetime3).unwrap();
         let mjd3_total = mjd3 + mjdfrac3;
         let mjd3_expect = 51544.0;
         assert!((mjd3_total - mjd3_expect).abs() < 1e-8,"Modified Julian Date Test failed: expected {}, got {}", mjd3_expect, mjd3_total);
@@ -541,7 +541,7 @@ mod tests {
             second: 0.0,
             timezone: Timezone::UTC
         };
-        let result = utc2mjday(datetime4);
+        let result = utc2mjday(&datetime4);
         assert!(result.is_err(), "Should return error for date before Oct 10, 1582");
         assert_eq!(result.unwrap_err(), DateError::DateTooEarly);
 
@@ -556,7 +556,7 @@ mod tests {
             timezone: Timezone::UT1
         };
 
-        let result = utc2mjday(datetime5);
+        let result = utc2mjday(&datetime5);
         assert!(result.is_err(), "Should return error for non-UTC date");
         assert_eq!(result.unwrap_err(), DateError::DateNotUTC);
     }

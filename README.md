@@ -17,8 +17,9 @@ I am pursuing this project for two reasons
 - Test with test cases from Vallado et al
 
 ## TODOs
-- Error handling
+- Error handling (TLE)
 - Implement SGP4 equations
+- Compile into library (crate)
 - Write a math spec
 - Include a visualizer?
 - Fit data to a TLE?
@@ -34,7 +35,7 @@ cargo doc
 ```
 
 ## Resources
-[Revisiting Spacetrack Report #3: Rev 3](https://celestrak.org/publications/AIAA/2006-6753/AIAA-2006-6753-Rev3.pdf)
-[Fundamentals of Astrodynamics and Applications](https://celestrak.org/software/vallado-sw.php)
-[Fundamentals of Astrodynamics Github Repository](https://github.com/CelesTrak/fundamentals-of-astrodynamics?tab=readme-ov-file)
-[History of Analytical Orbit Modeling in the U. S. Space Surveillance System](https://arc.aiaa.org/doi/abs/10.2514/1.9161?journalCode=jgcd)
+- [Revisiting Spacetrack Report #3: Rev 3 by Vallado et al](https://celestrak.org/publications/AIAA/2006-6753/AIAA-2006-6753-Rev3.pdf)
+- [Fundamentals of Astrodynamics and Applications by Vallado et al](https://celestrak.org/software/vallado-sw.php)
+- [Fundamentals of Astrodynamics Github Repository by Vallado et al](https://github.com/CelesTrak/fundamentals-of-astrodynamics?tab=readme-ov-file)
+- [History of Analytical Orbit Modeling in the U. S. Space Surveillance System by Hoots et al](https://arc.aiaa.org/doi/abs/10.2514/1.9161?journalCode=jgcd)

@@ -9,8 +9,8 @@ use std::f64::consts::PI;
 // Internal Libraries
 // ------------------
 use crate::tle::Tle;
-use crate::time;
-use crate::common;
+use crate::time::{dayofyr2utc, utc2jday};
+use crate::common::{Wgs, WGS72, deg2rad, calc_period};
 
 // -------
 // Structs
@@ -48,6 +48,25 @@ pub struct Sgp4 {
 
     /// Earth Zonal Harmonics Parameters
     pub zonal_params: EarthZonalParams,
+
+    /// Solar 3rd Body Parameters
+    pub solar_params: ThirdBodyParams,
+
+    /// Lunar 3rd Body Parameters
+    pub lunar_params: ThirdBodyParams,
+
+    /// Account for whole day resonance effects of Earth's gravity
+    pub whole_day_resonance: bool,
+
+    /// Whole day resonance parameters of Earth's gravity
+    pub whole_day_resonance_params: WholeDayResonanceParams,
+
+    /// Account for half day resonance effects of Earth's gravity
+    pub half_day_resonance: bool,
+
+    /// Half day resonance parameters of Earth's gravity
+    pub half_day_resonance_params: HalfDayResonanceParams,
+
 }
 
 /// Brouwer Mean Orbital Elements
@@ -59,6 +78,7 @@ pub struct Sgp4 {
 /// - [Revisiting Spacetrack Report #3: Rev 3 by Vallado et al](https://celestrak.org/publications/AIAA/2006-6753/AIAA-2006-6753-Rev3.pdf)
 /// - [Fundamentals of Astrodynamics and Applications by Vallado et al](https://celestrak.org/software/vallado-sw.php)
 /// - [History of Analytical Orbit Modeling in the U.S. Space Surveillance System by Hoots et al](https://arc.aiaa.org/doi/abs/10.2514/1.9161?casa_token=pVowNFT6MOkAAAAA%3A_DFsBbZwGC2QcMWxPhJN2k3suNrcP5YzV7NVBYSvwMxGy19RzX-AvUnyO9JT5Cku0cDYPfpIQm4&journalCode=jgcd)
+#[derive(Default, Clone, Copy)]
 pub struct BrouwerMeanElements {
     /// Orbital inclination \[rad\]
     pub i: f64,
@@ -99,6 +119,7 @@ pub struct BrouwerMeanElements {
 /// - [Revisiting Spacetrack Report #3: Rev 3 by Vallado et al](https://celestrak.org/publications/AIAA/2006-6753/AIAA-2006-6753-Rev3.pdf)
 /// - [Fundamentals of Astrodynamics and Applications by Vallado et al](https://celestrak.org/software/vallado-sw.php)
 /// - [History of Analytical Orbit Modeling in the U.S. Space Surveillance System by Hoots et al](https://arc.aiaa.org/doi/abs/10.2514/1.9161?casa_token=pVowNFT6MOkAAAAA%3A_DFsBbZwGC2QcMWxPhJN2k3suNrcP5YzV7NVBYSvwMxGy19RzX-AvUnyO9JT5Cku0cDYPfpIQm4&journalCode=jgcd)
+#[derive(Default, Clone, Copy)]
 pub struct AtmDragParams {
     /// Perigee height \[km\]
     pub hp: f64,
@@ -130,9 +151,6 @@ pub struct AtmDragParams {
     /// C5 constant \[\]
     pub c5: f64,
 
-    /// D1 constant \[\]
-    pub d1: f64,
-
     /// D2 constant \[\]
     pub d2: f64,
 
@@ -151,6 +169,7 @@ pub struct AtmDragParams {
 /// - [Revisiting Spacetrack Report #3: Rev 3 by Vallado et al](https://celestrak.org/publications/AIAA/2006-6753/AIAA-2006-6753-Rev3.pdf)
 /// - [Fundamentals of Astrodynamics and Applications by Vallado et al](https://celestrak.org/software/vallado-sw.php)
 /// - [History of Analytical Orbit Modeling in the U.S. Space Surveillance System by Hoots et al](https://arc.aiaa.org/doi/abs/10.2514/1.9161?casa_token=pVowNFT6MOkAAAAA%3A_DFsBbZwGC2QcMWxPhJN2k3suNrcP5YzV7NVBYSvwMxGy19RzX-AvUnyO9JT5Cku0cDYPfpIQm4&journalCode=jgcd)
+#[derive(Default, Clone, Copy)]
 pub struct EarthZonalParams {
     /// Rate of change of mean anomaly \[rad / min\]
     pub m_dot: f64,
@@ -170,8 +189,90 @@ pub struct EarthZonalParams {
 /// - [Revisiting Spacetrack Report #3: Rev 3 by Vallado et al](https://celestrak.org/publications/AIAA/2006-6753/AIAA-2006-6753-Rev3.pdf)
 /// - [Fundamentals of Astrodynamics and Applications by Vallado et al](https://celestrak.org/software/vallado-sw.php)
 /// - [History of Analytical Orbit Modeling in the U.S. Space Surveillance System by Hoots et al](https://arc.aiaa.org/doi/abs/10.2514/1.9161?casa_token=pVowNFT6MOkAAAAA%3A_DFsBbZwGC2QcMWxPhJN2k3suNrcP5YzV7NVBYSvwMxGy19RzX-AvUnyO9JT5Cku0cDYPfpIQm4&journalCode=jgcd)
+#[derive(Default, Clone, Copy)]
 pub struct ThirdBodyParams {
-    /// Rate of change of mean anomaly \[rad / min\]
+    /// Third body orbital inclination \[rad\]
+    pub i: f64,
+
+    /// Third body mean motion \[revs/min\]
+    pub n: f64,
+
+    /// Third body argument of perigee \[rad\]
+    pub omega: f64,
+
+    /// Third body right ascension of the ascending node (RAAN) \[rad\]
+    pub raan: f64,
+
+    /// Third body perturbation coefficient \[rad/min\]
+    pub c: f64,
+
+    /// x1 constant
+    pub x1: f64,
+
+    /// x2 constant
+    pub x2: f64,
+
+    /// x3 constant
+    pub x3: f64,
+
+    /// x4 constant
+    pub x4: f64,
+
+    /// x5 constant
+    pub x5: f64,
+
+    /// x6 constant 
+    pub x6: f64,
+
+    /// x7 constant
+    pub x7: f64,
+
+    /// x8 constant
+    pub x8: f64,
+
+    /// z1 constant
+    pub z1: f64,
+
+    /// z2 constant
+    pub z2: f64,
+
+    /// z3 constant
+    pub z3: f64,
+
+    /// z11 constant
+    pub z11: f64,
+
+    /// z13 constant
+    pub z13: f64,
+
+    /// z21 constant
+    pub z21: f64,
+
+    /// z23 constant
+    pub z23: f64,
+
+    /// z22 constant
+    pub z22: f64,
+
+    /// z12 constant
+    pub z12: f64,
+
+    /// z31 constant
+    pub z31: f64,
+
+    /// z32 constant
+    pub z32: f64,
+
+    /// z33 constant
+    pub z33: f64,
+
+    /// Rate of change of the orbital eccentricity \[1 / min\]
+    pub e_dot: f64,
+
+    /// Rate of change of the orbital inclination \[rad / min\]
+    pub i_dot: f64,
+
+    /// Rate of change of the mean anomaly \[rad / min\]
     pub m_dot: f64,
 
     /// Rate of change of the argument of perigee \[rad / min\]
@@ -179,6 +280,76 @@ pub struct ThirdBodyParams {
 
     /// Rate of change of the right ascension of the ascending node \[rad / min\]
     pub raan_dot: f64,
+}
+
+/// Half day resonance effects of Earth's gravity
+///
+/// This struct contains the parameters necessary to account for the impacts of half day resonance effects on an orbit.
+///
+/// References
+/// - [Revisiting Spacetrack Report #3: Rev 3 by Vallado et al](https://celestrak.org/publications/AIAA/2006-6753/AIAA-2006-6753-Rev3.pdf)
+/// - [Fundamentals of Astrodynamics and Applications by Vallado et al](https://celestrak.org/software/vallado-sw.php)
+/// - [History of Analytical Orbit Modeling in the U.S. Space Surveillance System by Hoots et al](https://arc.aiaa.org/doi/abs/10.2514/1.9161?casa_token=pVowNFT6MOkAAAAA%3A_DFsBbZwGC2QcMWxPhJN2k3suNrcP5YzV7NVBYSvwMxGy19RzX-AvUnyO9JT5Cku0cDYPfpIQm4&journalCode=jgcd)
+#[derive(Default, Clone, Copy)]
+pub struct HalfDayResonanceParams {
+    /// d2201 constant
+    pub d2201: f64,
+
+    /// d2211 constant
+    pub d2211: f64,
+
+    /// d3210 constant
+    pub d3210: f64,
+
+    /// d3222 constant
+    pub d3222: f64,
+
+    /// d5220 constant
+    pub d5220: f64,
+
+    /// d5232 constant
+    pub d5232: f64,
+
+    /// d4422 constant
+    pub d4422: f64,
+
+    /// d5421 constant
+    pub d5421: f64,
+
+    /// d5433 constant
+    pub d5433: f64,
+
+    /// d4410 constant
+    pub d4410: f64,
+}
+
+/// Whole day resonance effects of Earth's gravity
+///
+/// This struct contains the parameters necessary to account for the impacts of whole day resonance effects on an orbit.
+///
+/// References
+/// - [Revisiting Spacetrack Report #3: Rev 3 by Vallado et al](https://celestrak.org/publications/AIAA/2006-6753/AIAA-2006-6753-Rev3.pdf)
+/// - [Fundamentals of Astrodynamics and Applications by Vallado et al](https://celestrak.org/software/vallado-sw.php)
+/// - [History of Analytical Orbit Modeling in the U.S. Space Surveillance System by Hoots et al](https://arc.aiaa.org/doi/abs/10.2514/1.9161?casa_token=pVowNFT6MOkAAAAA%3A_DFsBbZwGC2QcMWxPhJN2k3suNrcP5YzV7NVBYSvwMxGy19RzX-AvUnyO9JT5Cku0cDYPfpIQm4&journalCode=jgcd)
+#[derive(Default, Clone, Copy)]
+pub struct WholeDayResonanceParams {
+    /// lam31 constant
+    pub lam31: f64,
+
+    /// lam22 constant
+    pub lam22: f64,
+
+    /// lam33 constant
+    pub lam33: f64,
+
+    /// delta1 constant
+    pub delta1: f64,
+
+    /// delta2 constant
+    pub delta2: f64,
+
+    /// delta3 constant
+    pub delta3: f64,
 }
 
 // -----
@@ -205,7 +376,7 @@ const RPTIM: f64 =  0.00437526908802;
 // Functions
 // ---------
 
-/// Build an [`SGP4`] struct for state propagation from a [`Tle`] struct
+/// Build an [`Sgp4`] struct for state propagation from a [`Tle`] struct
 ///
 /// Given a [`Tle`] struct, calculate the time-independent parameters necessary 
 /// to propagate a satellite's states in time. These parameters include
@@ -220,25 +391,30 @@ const RPTIM: f64 =  0.00437526908802;
 /// * `wgs` - Optional, specify World Geodetic System (WGS) parameters (defaults to WGS-72, the standard for TLEs)
 ///
 /// # Returns
-/// * [`SGP4`] - The time-independent parameters for the SGP4 propagator
+/// * [`Sgp4`] - The time-independent parameters for the SGP4 propagator
 ///
 /// # Examples
 /// ```rust
+/// // Define TLE
+/// let tle = Tle::default();
+/// 
+/// // Define WGS model
+/// let wgs = WGS72;
+///
+/// // Initialize the SGP4 propagator
+/// let sgp4 = init_sgp4(&tle, Some(&wgs));
 /// ```
 /// References
 /// - [Revisiting Spacetrack Report #3: Rev 3 by Vallado et al](https://celestrak.org/publications/AIAA/2006-6753/AIAA-2006-6753-Rev3.pdf)
 /// - [Fundamentals of Astrodynamics and Applications by Vallado et al](https://celestrak.org/software/vallado-sw.php)
 /// - [History of Analytical Orbit Modeling in the U.S. Space Surveillance System by Hoots et al](https://arc.aiaa.org/doi/abs/10.2514/1.9161?casa_token=pVowNFT6MOkAAAAA%3A_DFsBbZwGC2QcMWxPhJN2k3suNrcP5YzV7NVBYSvwMxGy19RzX-AvUnyO9JT5Cku0cDYPfpIQm4&journalCode=jgcd)
-pub fn init_sgp4(tle: Tle, wgs: Option<common::Wgs>) -> Sgp4 {
+pub fn init_sgp4(tle: &Tle, wgs: Option<&Wgs>) -> Sgp4 {
     // Use WGS72 or custom WGS models if provided
-    let mut wgs_sgp4 = common::WGS72;
-    if let Some(wgs_passed) = wgs {
-        wgs_sgp4 = wgs_passed;
-    }
+    let wgs_sgp4 = if let Some(wgs_passed) = wgs { *wgs_passed } else { WGS72 };
 
     // Extract TLE contents in proper units
     let i0 = deg2rad(tle.inclination); // [rad]
-    let n0_kozai = tle.mean_motion * XPDOTP; // [revs/min]
+    let n0_kozai = tle.mean_motion * XPDOTP; // [rad/min]
     let e0 = tle.eccentricity; // []
     let omega0 = deg2rad(tle.argument_of_perigee); // [rad]
     let raan0 = deg2rad(tle.right_ascension_of_ascending_node); // [rad]
@@ -246,18 +422,19 @@ pub fn init_sgp4(tle: Tle, wgs: Option<common::Wgs>) -> Sgp4 {
 
     // Extract TLE epoch in Julian day format
     let datetime0 = dayofyr2utc(tle.epoch_year, tle.epoch_day).unwrap();
-    let (jd0, jdfrac0) = utc2jday(datetime0).unwrap();
+    let (jd0, jdfrac0) = utc2jday(&datetime0).unwrap();
 
     // Recover Brouwer mean motion from Kozai mean motion (mean motion in TLE)
     let theta0 = i0.cos();
-    let beta0 = (1. - e0.powi(2))sqrt();
+    let beta0 = (1. - e0.powi(2)).sqrt();
     let a1 = (wgs_sgp4.ke / n0_kozai).powf(2./3.);
     let delta1 = (3./2.) * (wgs_sgp4.k2 / a1.powf(2.)) * (3. * i0.cos().powf(2.) - 1.) / (1. - e0.powf(2.)).powf(3./2.);
     let a2 = a1 * (1. - (1./3.) * delta1 - delta1.powf(2.) - (134./81.) * delta1.powf(3.));
     let delta0 = (3./2.) * (wgs_sgp4.k2 / a2.powf(2.)) * (3. * i0.cos().powf(2.) - 1.) / (1. - e0.powf(2.)).powf(3./2.);
-    let n0 = n0_kozai / (1. + delta0);
-    let a0 = (wgs_sgp4.ke / n0).powf(2./3.);
-    let period0 = calc_period(a0, wgs_sgp4.mu); // [min]
+    let n0 = n0_kozai / (1. + delta0); // [rad/min]
+    let a0 = (wgs_sgp4.ke / n0).powf(2./3.); // [Earth radii]
+    let a0_km = a0 * wgs_sgp4.r_earth_eq; // [km]
+    let period0 = calc_period(a0_km, wgs_sgp4.mu); // [min]
 
     // Store Brouwer mean elements
     let brouwer0 = BrouwerMeanElements {
@@ -271,13 +448,13 @@ pub fn init_sgp4(tle: Tle, wgs: Option<common::Wgs>) -> Sgp4 {
         n: n0,
         a: a0,
         period: period0,
-    }
+    };
 
     // Initialize atmospheric drag parameters
-    let atm_params = init_atm_effects(wgs_sgp4, tle, brouwer0);
+    let atm_params = init_atm_effects(&wgs_sgp4, tle, &brouwer0);
 
     // Initialize Earth zonal harmonics parameters
-    let zonal_params = init_zonal_effects(wgs_sgp4, brouwer0);
+    let zonal_params = init_zonal_effects(&wgs_sgp4, &brouwer0);
 
     // Check for deep space satellite
     let mut deep_space = false;
@@ -285,56 +462,76 @@ pub fn init_sgp4(tle: Tle, wgs: Option<common::Wgs>) -> Sgp4 {
         deep_space = true;
     }
 
-    // Lunar and solar gravity effects (TODO logic)
-    let (e_ls_dot, i_ls_dot, m_ls_dot, raan_ls_dot, omega_ls_dot) = init_lunar_solar_effects(jd0, jdfrac0, i0, n0, e0, omega0, raan0, eta0).unwrap();
+    // Lunar and solar gravity effects
+    let (lunar_params, solar_params) = init_lunar_solar_effects(deep_space, jd0, jdfrac0, &brouwer0);
 
     // Earth gravity resonance effects
-    let mut resonance
-    let mut res1 = 0.;
-    let mut res2 = 0.;
-    let mut res3 = 0.;
-    let mut res4 = 0.;
-    let mut res5 = 0.;
-    let mut res6 = 0.;
-    let mut res7 = 0.;
-    let mut res8 = 0.;
-    let mut res9 = 0.;
-    let mut res10 = 0.;
+    let mut whole_day_resonance = false;
+    let mut half_day_resonance = false;
+    let mut whole_day_resonance_params = WholeDayResonanceParams::default();
+    let mut half_day_resonance_params = HalfDayResonanceParams::default();
     if period0 >= 1200. && period0 <= 1800. {
-        (res1, res2, res3, res4, res5, res6) = init_earth_gravity_resonance_wholeday(i0, n0, e0, a0).unwrap();
+        whole_day_resonance = true;
+        whole_day_resonance_params = init_earth_gravity_resonance_wholeday(&brouwer0);
     } else if period0 >= 680. && period0 <= 760. {
-        (res1, res2, res3, res4, res5, res6, res7, res8, res9, res10) = init_earth_gravity_resonance_halfday(i0, n0, e0, a0).unwrap();
+        half_day_resonance = true;
+        half_day_resonance_params = init_earth_gravity_resonance_halfday(&brouwer0);
     }
 
     // Construct SGP4 propagator
     let sgp4 = Sgp4 {
         wgs: wgs_sgp4,
-        tle: tle,
+        tle: tle.clone(),
         jd0: jd0,
         jdfrac0: jdfrac0,
         deep_space: deep_space,
         brouwer0: brouwer0,
         atm_params: atm_params,
         zonal_params: zonal_params,
+        lunar_params: lunar_params,
+        solar_params: solar_params,
+        whole_day_resonance: whole_day_resonance,
+        whole_day_resonance_params: whole_day_resonance_params,
+        half_day_resonance: half_day_resonance,
+        half_day_resonance_params: half_day_resonance_params,
     };
+
     return sgp4;
 }
 
+/// Initialize the atmospheric drag effects
+///
+/// # Arguments
+/// * `wgs` - The WGS model
+/// * `tle` - The TLE
+/// * `brouwer0` - The Brouwer mean elements at epoch
+///
+/// # Returns
+/// * `AtmDragParams` - The atmospheric drag parameters
+///
+/// # Examples
+/// ```rust
+/// // Define WGS model
+/// let wgs = WGS72;
+///
+/// // Initialize the atmospheric drag effects
+/// let atm_params = init_atm_effects(&wgs, &tle, &brouwer0);
+/// ```
 ///
 /// References
 /// - [Revisiting Spacetrack Report #3: Rev 3 by Vallado et al](https://celestrak.org/publications/AIAA/2006-6753/AIAA-2006-6753-Rev3.pdf)
 /// - [Fundamentals of Astrodynamics and Applications by Vallado et al](https://celestrak.org/software/vallado-sw.php)
 /// - [History of Analytical Orbit Modeling in the U.S. Space Surveillance System by Hoots et al](https://arc.aiaa.org/doi/abs/10.2514/1.9161?casa_token=pVowNFT6MOkAAAAA%3A_DFsBbZwGC2QcMWxPhJN2k3suNrcP5YzV7NVBYSvwMxGy19RzX-AvUnyO9JT5Cku0cDYPfpIQm4&journalCode=jgcd)
-pub fn init_atm_effects(wgs: Wgs, tle: Tle, brouwer0: BrouwerMeanElements) -> AtmDragParams {
+pub fn init_atm_effects(wgs: &Wgs, tle: &Tle, brouwer0: &BrouwerMeanElements) -> AtmDragParams {
     // Define initial constants
     let a30 = -wgs.j3; // [Earth Radii^3]
     let q0 = (120. + wgs.r_earth_eq) / wgs.r_earth_eq; // [Earth radii]
 
     // Determine parameter s based on perigee height
-    let rp = brouwer0.a0 * (1. - brouwer0.e0); // Radius of perigee [Earth Radii]
+    let rp = brouwer0.a * (1. - brouwer0.e); // Radius of perigee [Earth Radii]
     let hp = (rp - 1.) * wgs.r_earth_eq; // Perigee height [km]
     
-    let mut s = 0. // [Earth radii]
+    let mut s = 0.; // [Earth radii]
     if hp >= 156. {
         s = (78. + wgs.r_earth_eq) / wgs.r_earth_eq;
     } else if hp >= 98.{
@@ -344,31 +541,31 @@ pub fn init_atm_effects(wgs: Wgs, tle: Tle, brouwer0: BrouwerMeanElements) -> At
     }
 
     // Calculate atmospheric drag parameters
-    let zeta = 1. / (brouwer0.a0 - s);
-    let eta = brouwer0.a0 * brouwer0.e0 * zeta;
+    let zeta = 1. / (brouwer0.a - s);
+    let eta = brouwer0.a * brouwer0.e * zeta;
     
-    let c2_1 = (q0 - s).powi(4) * zeta.powi(4) * brouwer0.n0 * (1. - eta.powi(2)).powf(-7./2.);
-    let c2_2 = brouwer0.a0 * (1. + (3./2.) * eta.powi(2) + 4. * brouwer0.e0 * eta + brouwer0.e0 * eta.powi(3));
+    let c2_1 = (q0 - s).powi(4) * zeta.powi(4) * brouwer0.n * (1. - eta.powi(2)).powf(-7./2.);
+    let c2_2 = brouwer0.a * (1. + (3./2.) * eta.powi(2) + 4. * brouwer0.e * eta + brouwer0.e * eta.powi(3));
     let c2_3 = (3./2.) * (wgs.k2 * zeta / (1. - eta.powi(2))) * (-(1./2.) + (3./2.) * brouwer0.theta.powi(2)) * (8. + 24. * eta.powi(2) + 3. * eta.powi(4));
     let c2 = c2_1 * (c2_2 + c2_3);
     
     let c1 = tle.bstar * c2;
-    let c3 = ((q0 - s).powf(4.) * zeta.powf(5.) * a30 * brouwer0.n0 * i0.sin()) / (wgs.k2 * brouwer0.e0);
+    let c3 = ((q0 - s).powf(4.) * zeta.powf(5.) * a30 * brouwer0.n * brouwer0.i.sin()) / (wgs.k2 * brouwer0.e);
     
-    let c4_1 = 2. * brouwer0.n0 * (q0 - s).powi(4) * zeta.powi(4) * brouwer0.a0 * brouwer0.beta0.powi(2) * (1. - eta.powi(2)).powf(-7./2.);
-    let c4_2 = 2. * eta * (1. + brouwer0.e0*eta) + 0.5 * brouwer0.e0 + 0.5 * eta.powi(3);
-    let c4_3 = 2. * wgs.k2 * zeta / (brouwer0.a0 * (1. - eta.powi(2)));
-    let c4_4 = 3. * (1. - 3. * brouwer0.theta.powi(2)) * (1. + 3./2. * eta.powi(2) - 2. * brouwer0.e0 * eta - 0.5 * brouwer0.e0 * eta.powi(3));
-    let c4_5 = 3./4. * (1. - brouwer0.theta.powi(2)) * (2. * eta.powi(2) - brouwer0.e0 * eta - brouwer0.e0 * eta.powi(3)) * (2. * brouwer0.omega0).cos();
+    let c4_1 = 2. * brouwer0.n * (q0 - s).powi(4) * zeta.powi(4) * brouwer0.a * brouwer0.beta.powi(2) * (1. - eta.powi(2)).powf(-7./2.);
+    let c4_2 = 2. * eta * (1. + brouwer0.e*eta) + 0.5 * brouwer0.e + 0.5 * eta.powi(3);
+    let c4_3 = 2. * wgs.k2 * zeta / (brouwer0.a * (1. - eta.powi(2)));
+    let c4_4 = 3. * (1. - 3. * brouwer0.theta.powi(2)) * (1. + 3./2. * eta.powi(2) - 2. * brouwer0.e * eta - 0.5 * brouwer0.e * eta.powi(3));
+    let c4_5 = 3./4. * (1. - brouwer0.theta.powi(2)) * (2. * eta.powi(2) - brouwer0.e * eta - brouwer0.e * eta.powi(3)) * (2. * brouwer0.omega).cos();
     let c4 = c4_1 * (c4_2 - c4_3 * (c4_4 + c4_5));
     
-    let c5_1 = 2. * (q0 - s).powi(4) * zeta.powi(4) * brouwer0.a0 * brouwer0.beta0.powi(2) * (1. - eta.powi(2)).powf(-7./2.);
-    let c5_2 = 1. + 11./4. * eta * (eta + brouwer0.e0) + brouwer0.e0 * eta.powi(3);
+    let c5_1 = 2. * (q0 - s).powi(4) * zeta.powi(4) * brouwer0.a * brouwer0.beta.powi(2) * (1. - eta.powi(2)).powf(-7./2.);
+    let c5_2 = 1. + 11./4. * eta * (eta + brouwer0.e) + brouwer0.e * eta.powi(3);
     let c5 = c5_1 * c5_2;
     
-    let d2 = 4. * brouwer0.a0 * zeta * c1.powi(2);
-    let d3 = 4./3. * brouwer0.a0 * zeta.powi(2) * (17. * brouwer0.a0 + s) * c1.powi(3);
-    let d4 = 2./3. * brouwer0.a0.powi(2) * zeta.powi(3) * (221. * brouwer0.a0 + 31. * s) * c1.powi(4);
+    let d2 = 4. * brouwer0.a * zeta * c1.powi(2);
+    let d3 = 4./3. * brouwer0.a * zeta.powi(2) * (17. * brouwer0.a + s) * c1.powi(3);
+    let d4 = 2./3. * brouwer0.a.powi(2) * zeta.powi(3) * (221. * brouwer0.a + 31. * s) * c1.powi(4);
 
     // Store atmospheric drag parameters
     let atm_params = AtmDragParams {
@@ -382,7 +579,6 @@ pub fn init_atm_effects(wgs: Wgs, tle: Tle, brouwer0: BrouwerMeanElements) -> At
         c3: c3,
         c4: c4,
         c5: c5,
-        d1: d1,
         d2: d2,
         d3: d3,
         d4: d4,
@@ -391,26 +587,43 @@ pub fn init_atm_effects(wgs: Wgs, tle: Tle, brouwer0: BrouwerMeanElements) -> At
     return atm_params;
 }
 
+/// Initialize the Earth zonal harmonics effects
+///
+/// # Arguments
+/// * `wgs` - The WGS model
+/// * `brouwer0` - The Brouwer mean elements at epoch
+///
+/// # Returns
+/// * `EarthZonalParams` - The Earth zonal harmonics parameters
+///
+/// # Examples
+/// ```rust
+/// // Define Brouwer mean elements at epoch
+/// let brouwer0 = BrouwerMeanElements::default();
+///
+/// // Initialize the Earth zonal harmonics effects
+/// let zonal_params = init_zonal_effects(&WGS72, &brouwer0);
+/// ```
 ///
 /// References
 /// - [Revisiting Spacetrack Report #3: Rev 3 by Vallado et al](https://celestrak.org/publications/AIAA/2006-6753/AIAA-2006-6753-Rev3.pdf)
 /// - [Fundamentals of Astrodynamics and Applications by Vallado et al](https://celestrak.org/software/vallado-sw.php)
 /// - [History of Analytical Orbit Modeling in the U.S. Space Surveillance System by Hoots et al](https://arc.aiaa.org/doi/abs/10.2514/1.9161?casa_token=pVowNFT6MOkAAAAA%3A_DFsBbZwGC2QcMWxPhJN2k3suNrcP5YzV7NVBYSvwMxGy19RzX-AvUnyO9JT5Cku0cDYPfpIQm4&journalCode=jgcd)
-pub fn init_zonal_effects(wgs: Wgs, brouwer0: BrouwerMeanElements) -> EarthZonalParams {
+pub fn init_zonal_effects(wgs: &Wgs, brouwer0: &BrouwerMeanElements) -> EarthZonalParams {
     // Calculate orbital element rates of change due to zonal harmonics
-    let m_dot_1 = 3. * wgs.k2 * (-1. + 3. * brouwer0.theta.powi(2)) / (2. * brouwer0.a0.powi(2) * brouwer0.beta0.powi(3));
-    let m_dot_2 = 3. * wgs.k2.powi(2) * (13. - 78. * brouwer0.theta.powi(2) + 137. * brouwer0.theta.powi(4)) / (16. * brouwer0.a0.powi(4) * brouwer0.beta0.powi(7));
-    let m_dot = (m_dot_1 + m_dot_2) * brouwer0.n0;
+    let m_dot_1 = 3. * wgs.k2 * (-1. + 3. * brouwer0.theta.powi(2)) / (2. * brouwer0.a.powi(2) * brouwer0.beta.powi(3));
+    let m_dot_2 = 3. * wgs.k2.powi(2) * (13. - 78. * brouwer0.theta.powi(2) + 137. * brouwer0.theta.powi(4)) / (16. * brouwer0.a.powi(4) * brouwer0.beta.powi(7));
+    let m_dot = (m_dot_1 + m_dot_2) * brouwer0.n;
 
-    let omega_dot_1 = -3. * wgs.k2 * (1. - 5. * brouwer0.theta.powi(2)) / (2. * brouwer0.a0.powi(2) * brouwer0.beta0.powi(4));
-    let omega_dot_2 = 3. * wgs.k2.powi(2) * (7. - 114. * brouwer0.theta.powi(2) + 395. * brouwer0.theta.powi(4)) / (16. * brouwer0.a0.powi(4) * brouwer0.beta0.powi(8));
-    let omega_dot_3 = 5. * wgs.k4 * (3. - 36. * brouwer0.theta.powi(2) + 49. * brouwer0.theta.powi(4)) / (4. * brouwer0.a0.powi(4) * brouwer0.beta0.powi(8));
-    let omega_dot = (omega_dot_1 + omega_dot_2 + omega_dot_3) * brouwer0.n0;
+    let omega_dot_1 = -3. * wgs.k2 * (1. - 5. * brouwer0.theta.powi(2)) / (2. * brouwer0.a.powi(2) * brouwer0.beta.powi(4));
+    let omega_dot_2 = 3. * wgs.k2.powi(2) * (7. - 114. * brouwer0.theta.powi(2) + 395. * brouwer0.theta.powi(4)) / (16. * brouwer0.a.powi(4) * brouwer0.beta.powi(8));
+    let omega_dot_3 = 5. * wgs.k4 * (3. - 36. * brouwer0.theta.powi(2) + 49. * brouwer0.theta.powi(4)) / (4. * brouwer0.a.powi(4) * brouwer0.beta.powi(8));
+    let omega_dot = (omega_dot_1 + omega_dot_2 + omega_dot_3) * brouwer0.n;
 
-    let raan_dot_1 = -3. * wgs.k2 * brouwer0.theta / (brouwer0.a0.powi(2) * brouwer0.beta0.powi(4));
-    let raan_dot_2 = 3. * wgs.k2.powi(2) * (4. * brouwer0.theta - 19. * brouwer0.theta.powi(3)) / (2. * brouwer0.a0.powi(4) * brouwer0.beta0.powi(8));
-    let raan_dot_3 = 5. * wgs.k4 * brouwer0.theta * (3. - 7. * brouwer0.theta.powi(2)) / (2. * brouwer0.a0.powi(4) * brouwer0.beta0.powi(8));
-    let raan_dot = (raan_dot_1 + raan_dot_2 + raan_dot_3) * brouwer0.n0;
+    let raan_dot_1 = -3. * wgs.k2 * brouwer0.theta / (brouwer0.a.powi(2) * brouwer0.beta.powi(4));
+    let raan_dot_2 = 3. * wgs.k2.powi(2) * (4. * brouwer0.theta - 19. * brouwer0.theta.powi(3)) / (2. * brouwer0.a.powi(4) * brouwer0.beta.powi(8));
+    let raan_dot_3 = 5. * wgs.k4 * brouwer0.theta * (3. - 7. * brouwer0.theta.powi(2)) / (2. * brouwer0.a.powi(4) * brouwer0.beta.powi(8));
+    let raan_dot = (raan_dot_1 + raan_dot_2 + raan_dot_3) * brouwer0.n;
 
     // Store Earth zonal parameters
     let zonal_params = EarthZonalParams {
@@ -422,12 +635,36 @@ pub fn init_zonal_effects(wgs: Wgs, brouwer0: BrouwerMeanElements) -> EarthZonal
     return zonal_params;
 }
 
+/// Initialize the Lunar and Solar third body effects
+///
+/// # Arguments
+/// * `deep_space` - Is this a deep space satellite
+/// * `jd0` - The Julian date at epoch \[days\]
+/// * `jdfrac0` - The fractional Julian date at epoch \[days\]
+/// * `brouwer0` - The Brouwer mean elements at epoch
+///
+/// # Returns
+/// * `(ThirdBodyParams, ThirdBodyParams)` - The Lunar and Solar third body parameters
+///
+/// # Examples
+/// ```rust
+/// // Define Brouwer mean elements at epoch
+/// let brouwer0 = BrouwerMeanElements::default();
+///
+/// // Initialize the Lunar and Solar third body effects
+/// let (lunar_params, solar_params) = init_lunar_solar_effects(true, jd0, jdfrac0, &brouwer0);
+/// ```
 ///
 /// References
 /// - [Revisiting Spacetrack Report #3: Rev 3 by Vallado et al](https://celestrak.org/publications/AIAA/2006-6753/AIAA-2006-6753-Rev3.pdf)
 /// - [Fundamentals of Astrodynamics and Applications by Vallado et al](https://celestrak.org/software/vallado-sw.php)
 /// - [History of Analytical Orbit Modeling in the U.S. Space Surveillance System by Hoots et al](https://arc.aiaa.org/doi/abs/10.2514/1.9161?casa_token=pVowNFT6MOkAAAAA%3A_DFsBbZwGC2QcMWxPhJN2k3suNrcP5YzV7NVBYSvwMxGy19RzX-AvUnyO9JT5Cku0cDYPfpIQm4&journalCode=jgcd)
-pub fn init_lunar_solar_effects(jd0: f64, jdfrac0: f64, i0: f64, n0: f64, e0: f64, omega0: f64, raan0: f64, eta0: f64) -> (f64, f64, f64, f64, f64) {
+pub fn init_lunar_solar_effects(deep_space: bool, jd0: f64, jdfrac0: f64, brouwer0: &BrouwerMeanElements) -> (ThirdBodyParams, ThirdBodyParams) {
+    // Check if the satellite is not in deep space
+    if !deep_space {
+        return (ThirdBodyParams::default(), ThirdBodyParams::default());
+    }
+
     // Obliquity of the ecliptic plane \[rad\]
     let eps = deg2rad(23.4441);
     let sin_eps = eps.sin();
@@ -491,7 +728,7 @@ pub fn init_lunar_solar_effects(jd0: f64, jdfrac0: f64, i0: f64, n0: f64, e0: f6
     let m_s0_dot = 0.017201977;
 
     // Find the difference in time between the Solar / Lunar epoch and the TLE epoch
-    let delta_t = tle_jd + tle_jdfrac - epoch_sm;
+    let delta_t = jd0 + jdfrac0 - epoch_sm;
 
     // Calculate the Lunar RAAN wrt to the ecliptic plane at TLE epoch
     let raan_me = (raan_me0 + raan_me0_dot * delta_t).rem_euclid(2.0 * PI);
@@ -523,38 +760,52 @@ pub fn init_lunar_solar_effects(jd0: f64, jdfrac0: f64, i0: f64, n0: f64, e0: f6
     let m_s = (m_s0 + m_s0_dot * delta_t).rem_euclid(2.0 * PI);
 
     // Calculate the Lunar secular rates
-    let (a_m_dot, e_m_dot, i_m_dot, m_m_dot, raan_m_dot, omega_m_dot) = calc_lunar_solar_secular_rates(i_m, n_m, omega_m, raan_m, c_m, i0, n0, e0, omega0, raan0, eta0).unwrap();
+    let lunar_params = calc_lunar_solar_secular_rates(i_m, n_m, omega_m, raan_m, c_m, brouwer0);
 
     // Calculate the Solar secular rates
-    let (a_s_dot, e_s_dot, i_s_dot, m_s_dot, raan_s_dot, omega_s_dot) = calc_lunar_solar_secular_rates(i_s, n_s, omega_s, raan_s, c_s, i0, n0, e0, omega0, raan0, eta0).unwrap();
+    let solar_params = calc_lunar_solar_secular_rates(i_s, n_s, omega_s, raan_s, c_s, brouwer0);
 
-    // Calculate the combined 3rd body secular rates
-    let e_ls_dot = e_m_dot + e_s_dot;
-    let i_ls_dot = i_m_dot + i_s_dot;
-    let m_ls_dot = m_m_dot + m_s_dot;
-    let raan_ls_dot = raan_m_dot + raan_s_dot;
-    let omega_ls_dot = omega_m_dot + omega_s_dot;
-
-    return Ok((e_ls_dot, i_ls_dot, m_ls_dot, raan_ls_dot, omega_ls_dot));
+    return (lunar_params, solar_params);
 }
 
+/// Calculate the secular rates of a third body's orbital elements
+///
+/// # Arguments
+/// * `i_x` - The third body orbital inclination \[rad\]
+/// * `n_x` - The third body mean motion \[rad/min\]
+/// * `omega_x` - The third body argument of perigee \[rad\]
+/// * `raan_x` - The third body right ascension of the ascending node (RAAN) \[rad\]
+/// * `c_x` - The third body perturbation coefficient \[rad/min\]
+/// * `brouwer0` - The Brouwer mean elements at epoch
+///
+/// # Returns
+/// * `ThirdBodyParams` - The third body parameters
+///
+/// # Examples
+/// ```rust
+/// // Define Brouwer mean elements at epoch
+/// let brouwer0 = BrouwerMeanElements::default();
+///
+/// // Calculate the Lunar secular rates
+/// let lunar_params = calc_lunar_solar_secular_rates(i_m, n_m, omega_m, raan_m, c_m, &brouwer0);
+/// ```
 ///
 /// References
 /// - [Revisiting Spacetrack Report #3: Rev 3 by Vallado et al](https://celestrak.org/publications/AIAA/2006-6753/AIAA-2006-6753-Rev3.pdf)
 /// - [Fundamentals of Astrodynamics and Applications by Vallado et al](https://celestrak.org/software/vallado-sw.php)
 /// - [History of Analytical Orbit Modeling in the U.S. Space Surveillance System by Hoots et al](https://arc.aiaa.org/doi/abs/10.2514/1.9161?casa_token=pVowNFT6MOkAAAAA%3A_DFsBbZwGC2QcMWxPhJN2k3suNrcP5YzV7NVBYSvwMxGy19RzX-AvUnyO9JT5Cku0cDYPfpIQm4&journalCode=jgcd)
-pub fn calc_lunar_solar_secular_rates(i_x: f64, n_x: f64, omega_x: f64, raan_x: f64, c_x: f64, i0: f64, n0: f64, e0: f64, omega0: f64, raan0: f64, eta0: f64) -> (f64, f64, f64, f64, f64, f64) {
+pub fn calc_lunar_solar_secular_rates(i_x: f64, n_x: f64, omega_x: f64, raan_x: f64, c_x: f64, brouwer0: &BrouwerMeanElements) -> ThirdBodyParams {
     // Precompute common quantities
-    let cos_raan_diff = (raan0 - raan_x).cos();
-    let sin_raan_diff = (raan0 - raan_x).sin();
+    let cos_raan_diff = (brouwer0.raan - raan_x).cos();
+    let sin_raan_diff = (brouwer0.raan - raan_x).sin();
     let cos_omega_x = omega_x.cos();
     let sin_omega_x = omega_x.sin();
-    let cos_omega0 = omega0.cos();
-    let sin_omega0 = omega0.sin();
+    let cos_omega0 = brouwer0.omega.cos();
+    let sin_omega0 = brouwer0.omega.sin();
     let cos_i_x = i_x.cos();
     let sin_i_x = i_x.sin();
-    let cos_i0 = i0.cos();
-    let sin_i0 = i0.sin();
+    let cos_i0 = brouwer0.i.cos();
+    let sin_i0 = brouwer0.i.sin();
 
     // Calculate 3rd body constants
     let a1 = cos_omega_x * cos_raan_diff + sin_omega_x * cos_i_x * sin_raan_diff;
@@ -580,48 +831,96 @@ pub fn calc_lunar_solar_secular_rates(i_x: f64, n_x: f64, omega_x: f64, raan_x: 
     let z31 = 12. * x1.powi(2) - 3. * x3.powi(2);
     let z32 = 24. * x1 * x2 - 6. * x3 * x4;
     let z33 = 12. * x2.powi(2) - 3. * x4.powi(2);
-    let z1 = 6. * (a1.powi(2) + a2.powi(2)) + (1. + e0.powi(2)) * z31;
-    let z2 = 12. * (a1 * a3 + a2 * a4) + (1 + e0.powi(2)) * z32;
-    let z3 = 6. * (a3.powi(2) + a4.powi(2)) + (1 + e0.powi(2)) * z33;
-    let z11 = -6. * a1 * a5 + e0.powi(2) * (-24. * x1 * x7 - 6. * x3 * x5);
-    let z13 = -6. * a3 * a6 + e0.powi(2) * (-24. * x2 * x8 - 6. * x4 * x6);
-    let z21 = 6. * a2 * a5 + e0.powi(2) * (24. * x1 * x5 - 6. * x3 * x7);
-    let z23 = 6. * a4 * a6 + e0.powi(2) * (24. * x2 * x6 - 6. * x4 * x8);
-    let z22 = 6. * a4 * a5 + 6. * a2 * a6 + e0.powi(2) * (24. * x2 * x5 + 24. * x1 * x6 - 6. * x4 * x7 - 6. * x3 * x8);
-    let z12 = -6. * a1 * a6 - 6. * a3 * a5 - e0.powi(2) * (24. * x2 * x7 + 24. * x1 * x8 + 6. * x3 * x6 + 6. * x4 * x5);
+    let z1 = 6. * (a1.powi(2) + a2.powi(2)) + (1. + brouwer0.e.powi(2)) * z31;
+    let z2 = 12. * (a1 * a3 + a2 * a4) + (1. + brouwer0.e.powi(2)) * z32;
+    let z3 = 6. * (a3.powi(2) + a4.powi(2)) + (1. + brouwer0.e.powi(2)) * z33;
+    let z11 = -6. * a1 * a5 + brouwer0.e.powi(2) * (-24. * x1 * x7 - 6. * x3 * x5);
+    let z13 = -6. * a3 * a6 + brouwer0.e.powi(2) * (-24. * x2 * x8 - 6. * x4 * x6);
+    let z21 = 6. * a2 * a5 + brouwer0.e.powi(2) * (24. * x1 * x5 - 6. * x3 * x7);
+    let z23 = 6. * a4 * a6 + brouwer0.e.powi(2) * (24. * x2 * x6 - 6. * x4 * x8);
+    let z22 = 6. * a4 * a5 + 6. * a2 * a6 + brouwer0.e.powi(2) * (24. * x2 * x5 + 24. * x1 * x6 - 6. * x4 * x7 - 6. * x3 * x8);
+    let z12 = -6. * a1 * a6 - 6. * a3 * a5 - brouwer0.e.powi(2) * (24. * x2 * x7 + 24. * x1 * x8 + 6. * x3 * x6 + 6. * x4 * x5);
 
     // Calculate secular rates
-    let a_x_dot = 0.;
+    let e_x_dot = -15. * c_x * n_x * (brouwer0.e * brouwer0.beta / brouwer0.n) * (x1 * x3 + x2 * x4);
     
-    let e_x_dot = -15. * c_x * n_x * (e0 * eta0 / n0) * (x1 * x3 + x2 * x4);
+    let i_x_dot = (-c_x * n_x / (2. * brouwer0.n * brouwer0.beta)) * (z11 + z13);
     
-    let i_x_dot = (-c_x * n_x / (2. * n0 * eta0)) * (z11 + z13);
-    
-    let m_x_dot = (-c_x * n_x / n0) * (z1 + z3 - 14. - 6. * e0.powi(2));
+    let m_x_dot = (-c_x * n_x / brouwer0.n) * (z1 + z3 - 14. - 6. * brouwer0.e.powi(2));
     
     let mut raan_x_dot = 0.;
-    if i0 >= deg2rad(3.) {
-        raan_x_dot = c_x * n_x / (2. * n0 * eta0 * sin_i0) * (z21 + z23);
+    if brouwer0.i >= deg2rad(3.) {
+        raan_x_dot = c_x * n_x / (2. * brouwer0.n * brouwer0.beta * sin_i0) * (z21 + z23);
     }
 
-    let mut omega_x_dot = c_x * n_x * eta0 / n0 * (z31 + z33 - 6.);
-    if i0 >= deg2rad(3.) {
+    let mut omega_x_dot = c_x * n_x * brouwer0.beta / brouwer0.n * (z31 + z33 - 6.);
+    if brouwer0.i >= deg2rad(3.) {
         omega_x_dot = omega_x_dot - raan_x_dot * cos_i0;
     }
 
-    // Return secular rates
-    return Ok((a_x_dot, e_x_dot, i_x_dot, m_x_dot, raan_x_dot, omega_x_dot))
+    // Store the 3rd body parameters
+    let third_body_params = ThirdBodyParams {
+        i: i_x,
+        n: n_x,
+        omega: omega_x,
+        raan: raan_x,
+        c: c_x,
+        x1: x1,
+        x2: x2,
+        x3: x3,
+        x4: x4,
+        x5: x5,
+        x6: x6,
+        x7: x7,
+        x8: x8,
+        z1: z1,
+        z2: z2,
+        z3: z3,
+        z11: z11,
+        z13: z13,
+        z21: z21,
+        z23: z23,
+        z22: z22,
+        z12: z12,
+        z31: z31,
+        z32: z32,
+        z33: z33,
+        e_dot: e_x_dot,
+        i_dot: i_x_dot,
+        m_dot: m_x_dot,
+        raan_dot: raan_x_dot,
+        omega_dot: omega_x_dot,
+    };
+
+    // Return 3rd body parameters
+    return third_body_params;
 }
 
+/// Initialize the half day resonance effects of Earth's gravity
+///
+/// # Arguments
+/// * `brouwer0` - The Brouwer mean elements at epoch
+///
+/// # Returns
+/// * `HalfDayResonanceParams` - The half day resonance parameters
+///
+/// # Examples
+/// ```rust
+/// // Define Brouwer mean elements at epoch
+/// let brouwer0 = BrouwerMeanElements::default();
+///
+/// // Initialize half day resonance effects
+/// let half_day_resonance_params = init_earth_gravity_resonance_halfday(&brouwer0);
+/// ```
 ///
 /// References
 /// - [Revisiting Spacetrack Report #3: Rev 3 by Vallado et al](https://celestrak.org/publications/AIAA/2006-6753/AIAA-2006-6753-Rev3.pdf)
 /// - [Fundamentals of Astrodynamics and Applications by Vallado et al](https://celestrak.org/software/vallado-sw.php)
 /// - [History of Analytical Orbit Modeling in the U.S. Space Surveillance System by Hoots et al](https://arc.aiaa.org/doi/abs/10.2514/1.9161?casa_token=pVowNFT6MOkAAAAA%3A_DFsBbZwGC2QcMWxPhJN2k3suNrcP5YzV7NVBYSvwMxGy19RzX-AvUnyO9JT5Cku0cDYPfpIQm4&journalCode=jgcd)
-pub fn init_earth_gravity_resonance_halfday(i0: f64, n0: f64, e0: f64, a0: f64) -> {
+pub fn init_earth_gravity_resonance_halfday(brouwer0: &BrouwerMeanElements) -> HalfDayResonanceParams {
     // Precompute common quantities
-    let cos_i0 = i0.cos();
-    let sin_i0 = i0.sin();
+    let cos_i0 = brouwer0.i.cos();
+    let sin_i0 = brouwer0.i.sin();
 
     // Define constants
     let c22s22 = 1.7891679e-6;
@@ -640,73 +939,102 @@ pub fn init_earth_gravity_resonance_halfday(i0: f64, n0: f64, e0: f64, a0: f64) 
     let f522 = (315./32.) * (sin_i0.powi(3) - 2. * sin_i0.powi(3) * cos_i0 - 5. * sin_i0.powi(3) * cos_i0.powi(2) + sin_i0 * ((-2./3.) + (4./3.) * cos_i0 + 2. * cos_i0.powi(2)));
     let f523 = (105./16.) * sin_i0 * (1. + 2. * cos_i0 - 3. * cos_i0.powi(2) - (3./2.) * sin_i0.powi(2) * (1. + 2. * cos_i0 - 5. * cos_i0.powi(2)));
     let f542 = (945./32.) * sin_i0 * (2. - 8. * cos_i0 + cos_i0.powi(2) * (-12. + 8. * cos_i0 + 10. * cos_i0.powi(2)));
-    let f543 = (945./32.) * sin_i0 * (cos_i0.powi(2) * (12. + 8. * cos_i0 - 10. cos_i0.powi(2)) - 2. - 8. * cos_i0);
+    let f543 = (945./32.) * sin_i0 * (cos_i0.powi(2) * (12. + 8. * cos_i0 - 10. * cos_i0.powi(2)) - 2. - 8. * cos_i0);
 
     // Calculate functions of eccentricity
-    let mut g211 = 0.;
-    let g201 = -0.306 - 0.44 * (e0 - 0.64);
-    let mut g310 = 0.;
-    let mut g322 = 0.;
-    let mut g410 = 0.;
-    let mut g422 = 0.;
-    let mut g520 = 0.;
-    let mut g521 = 0.;
-    let mut g532 = 0.;
-    let mut g533 = 0.;
-    if e0 <= 0.65 {
-        g211 = 3.616 - 13.247 * e0 + 16.29 * e0.powi(2);
-        g310 = -19.302 + 117.39 * e0 - 228.419 * e0.powi(2) + 156.591 * e0.powi(3);
-        g322 = -18.9068 + 109.7927 * e0 - 214.6334 * e0.powi(2) + 146.5816 * e0.powi(2);
-        g410 = -41.122 + 242.694 * e0 - 471.094 * e0.powi(2) + 313.953 * e0.powi(3);
-        g422 = -146.407 + 841.88 * e0 - 1629.014 * e0.powi(2) + 1083.435 * e0.powi(3);
-        g520 = -532.114 + 3017.977 * e0 - 5740.032 * e0.powi(2) + 3708.276 * e0.powi(3);
+    let g211: f64;
+    let g201 = -0.306 - 0.44 * (brouwer0.e - 0.64);
+    let g310: f64;
+    let g322: f64;
+    let g410: f64;
+    let g422: f64;
+    let g520: f64;
+    let g521: f64;
+    let g532: f64;
+    let g533: f64;
+    if brouwer0.e <= 0.65 {
+        g211 = 3.616 - 13.247 * brouwer0.e + 16.29 * brouwer0.e.powi(2);
+        g310 = -19.302 + 117.39 * brouwer0.e - 228.419 * brouwer0.e.powi(2) + 156.591 * brouwer0.e.powi(3);
+        g322 = -18.9068 + 109.7927 * brouwer0.e - 214.6334 * brouwer0.e.powi(2) + 146.5816 * brouwer0.e.powi(2);
+        g410 = -41.122 + 242.694 * brouwer0.e - 471.094 * brouwer0.e.powi(2) + 313.953 * brouwer0.e.powi(3);
+        g422 = -146.407 + 841.88 * brouwer0.e - 1629.014 * brouwer0.e.powi(2) + 1083.435 * brouwer0.e.powi(3);
+        g520 = -532.114 + 3017.977 * brouwer0.e - 5740.032 * brouwer0.e.powi(2) + 3708.276 * brouwer0.e.powi(3);
     } else {
-        g211 = -72.099 + 331.819 * e0 - 508.738 * e0.powi(2) + 266.724 * e0.powi(3);
-        g310 = -346.844 + 1582.851 * e0 - 2415.925 * e0.powi(2) + 1246.113 * e0.powi(3);
-        g322 = -342.585 + 1554.908 * e0 - 2366.899 * e0.powi(2) + 1215.972 * e0.powi(3);
-        g410 = -1052.797 + 4758.686 * e0 - 7193.992 * e0.powi(2) + 3651.957 * e0.powi(3);
-        g422 = -3581.69 + 16178.11 * e0 - 24462.77 * e0.powi(2) + 12422.52 * e0.powi(3);
-        if e0 < 0.715 {
-            g520 = 1464.74 - 4664.75 * e0 + 3763.64 * e0.powi(2);
+        g211 = -72.099 + 331.819 * brouwer0.e - 508.738 * brouwer0.e.powi(2) + 266.724 * brouwer0.e.powi(3);
+        g310 = -346.844 + 1582.851 * brouwer0.e - 2415.925 * brouwer0.e.powi(2) + 1246.113 * brouwer0.e.powi(3);
+        g322 = -342.585 + 1554.908 * brouwer0.e - 2366.899 * brouwer0.e.powi(2) + 1215.972 * brouwer0.e.powi(3);
+        g410 = -1052.797 + 4758.686 * brouwer0.e - 7193.992 * brouwer0.e.powi(2) + 3651.957 * brouwer0.e.powi(3);
+        g422 = -3581.69 + 16178.11 * brouwer0.e - 24462.77 * brouwer0.e.powi(2) + 12422.52 * brouwer0.e.powi(3);
+        if brouwer0.e < 0.715 {
+            g520 = 1464.74 - 4664.75 * brouwer0.e + 3763.64 * brouwer0.e.powi(2);
         } else {
-            g520 = -5149.66 + 29936.92 * e0 - 54087.36 * e0.powi(2) + 31324.56 * e0.powi(3);
+            g520 = -5149.66 + 29936.92 * brouwer0.e - 54087.36 * brouwer0.e.powi(2) + 31324.56 * brouwer0.e.powi(3);
         }
     }
-    if e0 < 0.7 {
-        g521 = -822.71072 + 4568.6173 * e0 - 8491.4146 * e0.powi(2) + 5337.524 * e0.powi(3);
-        g532 = -853.666 + 4690.25 * e0 - 8624.77 * e0.powi(2) + 5341.4 * e0.powi(3);
-        g533 = -919.2277 + 4988.61 * e0 - 9064.77 * e0.powi(2) + 5542.21 * e0.powi(3);
+    if brouwer0.e < 0.7 {
+        g521 = -822.71072 + 4568.6173 * brouwer0.e - 8491.4146 * brouwer0.e.powi(2) + 5337.524 * brouwer0.e.powi(3);
+        g532 = -853.666 + 4690.25 * brouwer0.e - 8624.77 * brouwer0.e.powi(2) + 5341.4 * brouwer0.e.powi(3);
+        g533 = -919.2277 + 4988.61 * brouwer0.e - 9064.77 * brouwer0.e.powi(2) + 5542.21 * brouwer0.e.powi(3);
     } else {
-        g521 = -51752.104 + 218913.95 * e0 - 309468.16 * e0.powi(2) + 146349.42 * e0.powi(3);
-        g532 = -40023.88 + 170470.89 * e0 - 242699.48 * e0.powi(2) + 115605.82 * e0.powi(3);
-        g533 = -37995.78 + 161616.52 * e0 - 229838.2 * e0.powi(2) + 109377.94 * e0.powi(3);
+        g521 = -51752.104 + 218913.95 * brouwer0.e - 309468.16 * brouwer0.e.powi(2) + 146349.42 * brouwer0.e.powi(3);
+        g532 = -40023.88 + 170470.89 * brouwer0.e - 242699.48 * brouwer0.e.powi(2) + 115605.82 * brouwer0.e.powi(3);
+        g533 = -37995.78 + 161616.52 * brouwer0.e - 229838.2 * brouwer0.e.powi(2) + 109377.94 * brouwer0.e.powi(3);
     }
 
     // Calculate the quadruples
-    let d2201 = 3 * n0.powi(2) / a0.powi(2) * (c22s22 * f220 * g201);
-    let d2211 = 3 * n0.powi(2) / a0.powi(2) * (c22s22 * f221 * g211);
-    let d3210 = 3 * n0.powi(2) / a0.powi(3) * (c32s32 * f321 * g310);
-    let d3222 = 3 * n0.powi(2) / a0.powi(3) * (c32s32 * f322 * g322);
-    let d5220 = 3 * n0.powi(2) / a0.powi(5) * (c52s52 * f522 * g520);
-    let d5232 = 3 * n0.powi(2) / a0.powi(5) * (c52s52 * f523 * g532);
-    let d4422 = 3 * n0.powi(2) / a0.powi(4) * (c44s44 * f442 * g422);
-    let d5421 = 3 * n0.powi(2) / a0.powi(5) * (c54s54 * f542 * g521);
-    let d5433 = 3 * n0.powi(2) / a0.powi(5) * (c54s54 * f543 * g533); // Typo in Hoots et al 2004
-    let d4410 = 3 * n0.powi(2) / a0.powi(4) * (c44s44 * f441 * g410);
+    let d2201 = 3. * brouwer0.n.powi(2) / brouwer0.a.powi(2) * (c22s22 * f220 * g201);
+    let d2211 = 3. * brouwer0.n.powi(2) / brouwer0.a.powi(2) * (c22s22 * f221 * g211);
+    let d3210 = 3. * brouwer0.n.powi(2) / brouwer0.a.powi(3) * (c32s32 * f321 * g310);
+    let d3222 = 3. * brouwer0.n.powi(2) / brouwer0.a.powi(3) * (c32s32 * f322 * g322);
+    let d5220 = 3. * brouwer0.n.powi(2) / brouwer0.a.powi(5) * (c52s52 * f522 * g520);
+    let d5232 = 3. * brouwer0.n.powi(2) / brouwer0.a.powi(5) * (c52s52 * f523 * g532);
+    let d4422 = 3. * brouwer0.n.powi(2) / brouwer0.a.powi(4) * (c44s44 * f442 * g422);
+    let d5421 = 3. * brouwer0.n.powi(2) / brouwer0.a.powi(5) * (c54s54 * f542 * g521);
+    let d5433 = 3. * brouwer0.n.powi(2) / brouwer0.a.powi(5) * (c54s54 * f543 * g533); // Typo in Hoots et al 2004
+    let d4410 = 3. * brouwer0.n.powi(2) / brouwer0.a.powi(4) * (c44s44 * f441 * g410);
 
-    // Return quadruples
-    return Ok((d2201, d2211, d3210, d3222, d5220, d5232, d4422, d5421, d5433, d4410))
+    // Store resonance parameters
+    let half_day_resonance_params = HalfDayResonanceParams {
+        d2201: d2201,
+        d2211: d2211,
+        d3210: d3210,
+        d3222: d3222,
+        d5220: d5220,
+        d5232: d5232,
+        d4422: d4422,
+        d5421: d5421,
+        d5433: d5433,
+        d4410: d4410,
+    };
+
+    return half_day_resonance_params;
 }
 
+/// Initialize the whole day resonance effects of Earth's gravity
+///
+/// # Arguments
+/// * `brouwer0` - The Brouwer mean elements at epoch
+///
+/// # Returns
+/// * `WholeDayResonanceParams` - The whole day resonance parameters
+///
+/// # Examples
+/// ```rust
+/// // Define Brouwer mean elements at epoch
+/// let brouwer0 = BrouwerMeanElements::default();
+///
+/// // Initialize whole day resonance effects
+/// let whole_day_resonance_params = init_earth_gravity_resonance_wholeday(&brouwer0);
+/// ```
 ///
 /// References
 /// - [Revisiting Spacetrack Report #3: Rev 3 by Vallado et al](https://celestrak.org/publications/AIAA/2006-6753/AIAA-2006-6753-Rev3.pdf)
 /// - [Fundamentals of Astrodynamics and Applications by Vallado et al](https://celestrak.org/software/vallado-sw.php)
 /// - [History of Analytical Orbit Modeling in the U.S. Space Surveillance System by Hoots et al](https://arc.aiaa.org/doi/abs/10.2514/1.9161?casa_token=pVowNFT6MOkAAAAA%3A_DFsBbZwGC2QcMWxPhJN2k3suNrcP5YzV7NVBYSvwMxGy19RzX-AvUnyO9JT5Cku0cDYPfpIQm4&journalCode=jgcd)
-pub fn init_earth_gravity_resonance_wholeday(i0: f64, n0: f64, e0: f64, a0: f64) -> (f64, f64, f64, f64, f64, f64){
+pub fn init_earth_gravity_resonance_wholeday(brouwer0: &BrouwerMeanElements) -> WholeDayResonanceParams {
     // Precompute common quantities
-    let cos_i0 = i0.cos();
-    let sin_i0 = i0.sin();
+    let cos_i0 = brouwer0.i.cos();
+    let sin_i0 = brouwer0.i.sin();
 
     // Define constants
     let q31 = 2.1460748e-6;
@@ -722,17 +1050,26 @@ pub fn init_earth_gravity_resonance_wholeday(i0: f64, n0: f64, e0: f64, a0: f64)
     let f330 = (15. / 8.) * (1. + cos_i0).powi(3);
     
     // Calculate functions of eccentricity
-    let g200 = 1. - (5./2.) * e0.powi(2) + (13. / 16.) * e0.powi(4);
-    let g310 = 1. + 2. * e0.powi(2);
-    let g300 = 1. - 6. * e0.powi(2) + (423. / 64.) * e0.powi(4);
+    let g200 = 1. - (5./2.) * brouwer0.e.powi(2) + (13. / 16.) * brouwer0.e.powi(4);
+    let g310 = 1. + 2. * brouwer0.e.powi(2);
+    let g300 = 1. - 6. * brouwer0.e.powi(2) + (423. / 64.) * brouwer0.e.powi(4);
 
     // Calculate coefficients of the resonance terms
-    let delta1 = (3. * n0.powi(2) / a0.powi(3)) * f311 * g310 * q31;
-    let delta2 = (6. * n0.powi(2) / a0.powi(2)) * f220 * g200 * q22;
-    let delta3 = (9. * n0.powi(2) / a0.powi(3)) * f330 * g300 * q33;
+    let delta1 = (3. * brouwer0.n.powi(2) / brouwer0.a.powi(3)) * f311 * g310 * q31;
+    let delta2 = (6. * brouwer0.n.powi(2) / brouwer0.a.powi(2)) * f220 * g200 * q22;
+    let delta3 = (9. * brouwer0.n.powi(2) / brouwer0.a.powi(3)) * f330 * g300 * q33;
 
-    // Return resonance terms
-    return Ok((lam31, lam22, lam33, delta1, delta2, delta3));
+    // Store resonance parameters
+    let whole_day_resonance_params = WholeDayResonanceParams {
+        lam31: lam31,
+        lam22: lam22,
+        lam33: lam33,
+        delta1: delta1,
+        delta2: delta2,
+        delta3: delta3,
+    };
+
+    return whole_day_resonance_params;
 }
 
 ///
@@ -740,19 +1077,19 @@ pub fn init_earth_gravity_resonance_wholeday(i0: f64, n0: f64, e0: f64, a0: f64)
 /// - [Revisiting Spacetrack Report #3: Rev 3 by Vallado et al](https://celestrak.org/publications/AIAA/2006-6753/AIAA-2006-6753-Rev3.pdf)
 /// - [Fundamentals of Astrodynamics and Applications by Vallado et al](https://celestrak.org/software/vallado-sw.php)
 /// - [History of Analytical Orbit Modeling in the U.S. Space Surveillance System by Hoots et al](https://arc.aiaa.org/doi/abs/10.2514/1.9161?casa_token=pVowNFT6MOkAAAAA%3A_DFsBbZwGC2QcMWxPhJN2k3suNrcP5YzV7NVBYSvwMxGy19RzX-AvUnyO9JT5Cku0cDYPfpIQm4&journalCode=jgcd)
-pub fn sgp4_prop(sgp4: Sgp4, datetime: DateTime) -> {
-    // Convert datetime to Julian day format
-    let (jd_prop, jdfrac_prop) = utc2jday(datetime).unwrap();
+// pub fn sgp4_prop(sgp4: Sgp4, datetime: DateTime) -> {
+//     // Convert datetime to Julian day format
+//     let (jd_prop, jdfrac_prop) = utc2jday(datetime).unwrap();
 
-    // Get minutes since epoch
-    let delta_t = (jd_prop + jdfrac_prop - (sgp4.jd0 + sgp4.jdfrac0)) * 1440.;
+//     // Get minutes since epoch
+//     let delta_t = (jd_prop + jdfrac_prop - (sgp4.jd0 + sgp4.jdfrac0)) * 1440.;
 
-    // Account for Earth zonal gravity and partial atmospheric drag effects
-    let m_df = m0 + n0 * delta_t + m_dot * delta_t;
-    let omega_df = omega0 + omega_dot * delta_t;
-    let raan_df = raan0 + raan_dot * delta_t;
-    let delta_omega = bstar * c3 * omega0.cos() * delta_t
-}
+//     // Account for Earth zonal gravity and partial atmospheric drag effects
+//     let m_df = m0 + n0 * delta_t + m_dot * delta_t;
+//     let omega_df = omega0 + omega_dot * delta_t;
+//     let raan_df = raan0 + raan_dot * delta_t;
+//     let delta_omega = bstar * c3 * omega0.cos() * delta_t
+// }
 
 // ----------
 // Unit Tests
