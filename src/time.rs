@@ -57,7 +57,7 @@ pub struct DateTime {
     /// The minute (0-59)
     pub minute: i32,
     
-    /// The second with fractional component (0.0-59.999...)
+    /// The second with fractional component (0.0-59.999...) TODO add milliseconds component
     pub second: f64,
     
     /// The timezone associated with this datetime

@@ -49,9 +49,47 @@ pub struct Wgs {
     pub tumin: f64,
 }
 
+/// State vector
+///
+/// This struct contains the state vector of a satellite.
+#[derive(Default, Clone, Copy)]
+pub struct StateVector {
+    /// Position vector \[km\]
+    pub r_x: f64,
+    pub r_y: f64,
+    pub r_z: f64,
+
+    /// Velocity vector \[km/s\]
+    pub v_x: f64,
+    pub v_y: f64,
+    pub v_z: f64,
+
+    /// Coordinate frame
+    pub coordinate_frame: CoordinateFrame,
+}
+
 // ---------
 // Enums
 // ---------
+
+/// Coordinate frames
+///
+/// Represents the coordinate frame used for the state vector.
+///
+/// # Examples
+/// ```rust
+/// use Rusty_SGP4::common::CoordinateFrame;
+///
+/// let frame_teme = CoordinateFrame::TEME;
+/// let frame_j2000 = CoordinateFrame::J2000;
+/// ```
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CoordinateFrame {
+    /// True Equator Mean Equinox (TEME), an Earth-centered inertial (ECI) coordinate frame
+    TEME,
+    /// J2000, an Earth-centered inertial (ECI) coordinate frame
+    J2000,
+}
 
 // ---------
 // Constants

@@ -9,8 +9,8 @@ use std::f64::consts::PI;
 // Internal Libraries
 // ------------------
 use crate::tle::Tle;
-use crate::time::{dayofyr2utc, utc2jday};
-use crate::common::{Wgs, WGS72, deg2rad, calc_period};
+use crate::time::{dayofyr2utc, utc2jday, DateTime};
+use crate::common::{Wgs, WGS72, deg2rad, calc_period, StateVector, CoordinateFrame};
 
 // -------
 // Structs
@@ -292,6 +292,15 @@ pub struct ThirdBodyParams {
 /// - [History of Analytical Orbit Modeling in the U.S. Space Surveillance System by Hoots et al](https://arc.aiaa.org/doi/abs/10.2514/1.9161?casa_token=pVowNFT6MOkAAAAA%3A_DFsBbZwGC2QcMWxPhJN2k3suNrcP5YzV7NVBYSvwMxGy19RzX-AvUnyO9JT5Cku0cDYPfpIQm4&journalCode=jgcd)
 #[derive(Default, Clone, Copy)]
 pub struct HalfDayResonanceParams {
+    /// Greenwich sidereal time at epoch \[rad\]
+    pub theta_g: f64,
+
+    /// lam0 constant
+    pub lam0: f64,
+    
+    /// lam0 rate of change
+    pub lam0_dot: f64,
+
     /// d2201 constant
     pub d2201: f64,
 
@@ -333,6 +342,15 @@ pub struct HalfDayResonanceParams {
 /// - [History of Analytical Orbit Modeling in the U.S. Space Surveillance System by Hoots et al](https://arc.aiaa.org/doi/abs/10.2514/1.9161?casa_token=pVowNFT6MOkAAAAA%3A_DFsBbZwGC2QcMWxPhJN2k3suNrcP5YzV7NVBYSvwMxGy19RzX-AvUnyO9JT5Cku0cDYPfpIQm4&journalCode=jgcd)
 #[derive(Default, Clone, Copy)]
 pub struct WholeDayResonanceParams {
+    /// Greenwich sidereal time at epoch \[rad\]
+    pub theta_g: f64,
+
+    /// lam0 constant
+    pub lam0: f64,
+
+    /// lam0 rate of change
+    pub lam0_dot: f64,
+
     /// lam31 constant
     pub lam31: f64,
 
@@ -369,8 +387,8 @@ const XPDOTP: f64 = 229.1831180523293;
 /// The rotational velocity of the earth in rad/min
 ///
 /// References:
-/// - [Revisiting Spacetrack Report #3: Rev 3 by Vallado et al](https://celestrak.org/publications/AIAA/2006-6753/AIAA-2006-6753-Rev3.pdf)
-const RPTIM: f64 =  0.00437526908802;
+/// - [Fundamentals of Astrodynamics and Applications by Vallado et al](https://celestrak.org/software/vallado-sw.php)
+const RPTIM: f64 =  4.37526908801129966e-3;
 
 // ---------
 // Functions
@@ -472,10 +490,10 @@ pub fn init_sgp4(tle: &Tle, wgs: Option<&Wgs>) -> Sgp4 {
     let mut half_day_resonance_params = HalfDayResonanceParams::default();
     if period0 >= 1200. && period0 <= 1800. {
         whole_day_resonance = true;
-        whole_day_resonance_params = init_earth_gravity_resonance_wholeday(&brouwer0);
+        whole_day_resonance_params = init_earth_gravity_resonance_wholeday(jd0, jdfrac0, &brouwer0, &zonal_params, &lunar_params, &solar_params);
     } else if period0 >= 680. && period0 <= 760. {
         half_day_resonance = true;
-        half_day_resonance_params = init_earth_gravity_resonance_halfday(&brouwer0);
+        half_day_resonance_params = init_earth_gravity_resonance_halfday(jd0, jdfrac0, &brouwer0, &zonal_params, &lunar_params, &solar_params);
     }
 
     // Construct SGP4 propagator
@@ -899,7 +917,12 @@ pub fn calc_lunar_solar_secular_rates(i_x: f64, n_x: f64, omega_x: f64, raan_x: 
 /// Initialize the half day resonance effects of Earth's gravity
 ///
 /// # Arguments
+/// * `jd0` - The Julian date at epoch \[days\]
+/// * `jdfrac0` - The fractional Julian date at epoch \[days\]
 /// * `brouwer0` - The Brouwer mean elements at epoch
+/// * `zonal_params` - The Earth zonal harmonics parameters
+/// * `lunar_params` - The Lunar third body parameters
+/// * `solar_params` - The Solar third body parameters
 ///
 /// # Returns
 /// * `HalfDayResonanceParams` - The half day resonance parameters
@@ -909,15 +932,37 @@ pub fn calc_lunar_solar_secular_rates(i_x: f64, n_x: f64, omega_x: f64, raan_x: 
 /// // Define Brouwer mean elements at epoch
 /// let brouwer0 = BrouwerMeanElements::default();
 ///
+/// // Define Earth zonal harmonics parameters
+/// let zonal_params = EarthZonalParams::default();
+///
+/// // Define Lunar third body parameters
+/// let lunar_params = ThirdBodyParams::default();
+///
+/// // Define Solar third body parameters
+/// let solar_params = ThirdBodyParams::default();
+///
+/// // Define Julian date at epoch
+/// let jd0 = 2451545.0;
+///
+/// // Define fractional Julian date at epoch
+/// let jdfrac0 = 0.0;
+///
 /// // Initialize half day resonance effects
-/// let half_day_resonance_params = init_earth_gravity_resonance_halfday(&brouwer0);
+/// let half_day_resonance_params = init_earth_gravity_resonance_halfday(jd0, jdfrac0, &brouwer0, &zonal_params, &lunar_params, &solar_params);
 /// ```
 ///
 /// References
 /// - [Revisiting Spacetrack Report #3: Rev 3 by Vallado et al](https://celestrak.org/publications/AIAA/2006-6753/AIAA-2006-6753-Rev3.pdf)
 /// - [Fundamentals of Astrodynamics and Applications by Vallado et al](https://celestrak.org/software/vallado-sw.php)
 /// - [History of Analytical Orbit Modeling in the U.S. Space Surveillance System by Hoots et al](https://arc.aiaa.org/doi/abs/10.2514/1.9161?casa_token=pVowNFT6MOkAAAAA%3A_DFsBbZwGC2QcMWxPhJN2k3suNrcP5YzV7NVBYSvwMxGy19RzX-AvUnyO9JT5Cku0cDYPfpIQm4&journalCode=jgcd)
-pub fn init_earth_gravity_resonance_halfday(brouwer0: &BrouwerMeanElements) -> HalfDayResonanceParams {
+pub fn init_earth_gravity_resonance_halfday(
+    jd0: f64, 
+    jdfrac0: f64, 
+    brouwer0: &BrouwerMeanElements, 
+    zonal_params: &EarthZonalParams, 
+    lunar_params: &ThirdBodyParams, 
+    solar_params: &ThirdBodyParams
+) -> HalfDayResonanceParams {
     // Precompute common quantities
     let cos_i0 = brouwer0.i.cos();
     let sin_i0 = brouwer0.i.sin();
@@ -993,8 +1038,16 @@ pub fn init_earth_gravity_resonance_halfday(brouwer0: &BrouwerMeanElements) -> H
     let d5433 = 3. * brouwer0.n.powi(2) / brouwer0.a.powi(5) * (c54s54 * f543 * g533); // Typo in Hoots et al 2004
     let d4410 = 3. * brouwer0.n.powi(2) / brouwer0.a.powi(4) * (c44s44 * f441 * g410);
 
+    // Calculate the initial value for the auxilary variable lam0
+    let theta_g = calc_theta_g(jd0, jdfrac0);
+    let lam0 = brouwer0.m + 2 * brouwer0.raan - 2 * theta_g;
+    let lam0_dot = zonal_params.m_dot + (lunar_params.m_dot + solar_params.m_dot) + 2 * zonal_params.raan_dot + 2 * (lunar_params.raan_dot + solar_params.raan_dot) - 2 * RPTIM;
+
     // Store resonance parameters
     let half_day_resonance_params = HalfDayResonanceParams {
+        theta_g: theta_g,
+        lam0: lam0,
+        lam0_dot: lam0_dot,
         d2201: d2201,
         d2211: d2211,
         d3210: d3210,
@@ -1013,7 +1066,12 @@ pub fn init_earth_gravity_resonance_halfday(brouwer0: &BrouwerMeanElements) -> H
 /// Initialize the whole day resonance effects of Earth's gravity
 ///
 /// # Arguments
+/// * `jd0` - The Julian date at epoch \[days\]
+/// * `jdfrac0` - The fractional Julian date at epoch \[days\]
 /// * `brouwer0` - The Brouwer mean elements at epoch
+/// * `zonal_params` - The Earth zonal harmonics parameters
+/// * `lunar_params` - The Lunar third body parameters
+/// * `solar_params` - The Solar third body parameters
 ///
 /// # Returns
 /// * `WholeDayResonanceParams` - The whole day resonance parameters
@@ -1023,15 +1081,37 @@ pub fn init_earth_gravity_resonance_halfday(brouwer0: &BrouwerMeanElements) -> H
 /// // Define Brouwer mean elements at epoch
 /// let brouwer0 = BrouwerMeanElements::default();
 ///
+/// // Define Earth zonal harmonics parameters
+/// let zonal_params = EarthZonalParams::default();
+///
+/// // Define Lunar third body parameters
+/// let lunar_params = ThirdBodyParams::default();
+///
+/// // Define Solar third body parameters
+/// let solar_params = ThirdBodyParams::default();
+///
+/// // Define Julian date at epoch
+/// let jd0 = 2451545.0;
+///
+/// // Define fractional Julian date at epoch
+/// let jdfrac0 = 0.0;
+///
 /// // Initialize whole day resonance effects
-/// let whole_day_resonance_params = init_earth_gravity_resonance_wholeday(&brouwer0);
+/// let whole_day_resonance_params = init_earth_gravity_resonance_wholeday(jd0, jdfrac0, &brouwer0, &zonal_params, &lunar_params, &solar_params);
 /// ```
 ///
 /// References
 /// - [Revisiting Spacetrack Report #3: Rev 3 by Vallado et al](https://celestrak.org/publications/AIAA/2006-6753/AIAA-2006-6753-Rev3.pdf)
 /// - [Fundamentals of Astrodynamics and Applications by Vallado et al](https://celestrak.org/software/vallado-sw.php)
 /// - [History of Analytical Orbit Modeling in the U.S. Space Surveillance System by Hoots et al](https://arc.aiaa.org/doi/abs/10.2514/1.9161?casa_token=pVowNFT6MOkAAAAA%3A_DFsBbZwGC2QcMWxPhJN2k3suNrcP5YzV7NVBYSvwMxGy19RzX-AvUnyO9JT5Cku0cDYPfpIQm4&journalCode=jgcd)
-pub fn init_earth_gravity_resonance_wholeday(brouwer0: &BrouwerMeanElements) -> WholeDayResonanceParams {
+pub fn init_earth_gravity_resonance_wholeday(
+    jd0: f64, 
+    jdfrac0: f64, 
+    brouwer0: &BrouwerMeanElements, 
+    zonal_params: &EarthZonalParams, 
+    lunar_params: &ThirdBodyParams, 
+    solar_params: &ThirdBodyParams
+) -> WholeDayResonanceParams {
     // Precompute common quantities
     let cos_i0 = brouwer0.i.cos();
     let sin_i0 = brouwer0.i.sin();
@@ -1059,8 +1139,18 @@ pub fn init_earth_gravity_resonance_wholeday(brouwer0: &BrouwerMeanElements) -> 
     let delta2 = (6. * brouwer0.n.powi(2) / brouwer0.a.powi(2)) * f220 * g200 * q22;
     let delta3 = (9. * brouwer0.n.powi(2) / brouwer0.a.powi(3)) * f330 * g300 * q33;
 
+    // Calculate the initial value for the auxilary variable lam0
+    let theta_g = calc_theta_g(jd0, jdfrac0);
+    let lam0 = brouwer0.m + brouwer0.raan + brouwer0.omega - theta_g;
+    let lam0_dot_1 = zonal_params.m_dot + (lunar_params.m_dot + solar_params.m_dot) + zonal_params.raan_dot + (lunar_params.raan_dot + solar_params.raan_dot);
+    let lam0_dot_2 = zonal_params.omega_dot + (lunar_params.omega_dot + solar_params.omega_dot) - RPTIM;
+    let lam0_dot = lam0_dot_1 + lam0_dot_2;
+
     // Store resonance parameters
     let whole_day_resonance_params = WholeDayResonanceParams {
+        theta_g: theta_g,
+        lam0: lam0,
+        lam0_dot:lam0_dot,
         lam31: lam31,
         lam22: lam22,
         lam33: lam33,
@@ -1072,24 +1162,323 @@ pub fn init_earth_gravity_resonance_wholeday(brouwer0: &BrouwerMeanElements) -> 
     return whole_day_resonance_params;
 }
 
+/// Calculate the longitude of Greenwich
+///
+/// # Arguments
+/// * `datetime` - The datetime to calculate the longitude of Greenwich for
+///
+/// # Returns
+/// * `theta_g` - The longitude of Greenwich in radians
+///
+/// # Examples
+/// ```rust
+/// // Define SGP4 parameters
+/// let sgp4 = Sgp4::default();
+///
+/// // Define datetime to calculate the longitude of Greenwich for
+/// let datetime = DateTime::default();
+///
+/// // Calculate the longitude of Greenwich
+/// let theta_g = calc_theta_g(sgp4, datetime);
+/// ```
+///
+/// References
+/// - [Fundamentals of Astrodynamics and Applications by Vallado et al](https://celestrak.org/software/vallado-sw.php)
+pub fn calc_theta_g(jd0: f64, jdfrac0: f64) -> f64 {
+    // Calculate the Julian centuries since J2000.0
+    let tut1 = (jd0 + jdfrac0 - 2451545.0) / 36525.0; // [centuries]
+
+    // Calculate the Greenwich sidereal time in seconds
+    let temp = -6.2e-6 * tut1.powi(3) + 0.093104 * tut1.powi(2) + (876600.0 * 3600.0 + 8640184.812866) * tut1 + 67310.54841;  // [seconds]
+
+    // Calculate the Greenwich sidereal time in radians
+    let theta_g = (deg2rad(temp / 240.0)).rem_euclid(2.0 * PI); // [radians] 360/86400 = 1/240 degrees per second
+
+    // Return the Greenwich sidereal time in radians
+    return theta_g;
+}
+
+/// Simplified General Perturbations 4 (SGP4) Propagator
+///
+/// This function propagates the state vector of a satellite from the epoch to the given datetime using the SGP4 propagator.
+///
+/// # Arguments
+/// * `sgp4` - The SGP4 parameters
+/// * `datetime` - The datetime to propagate to
+///
+/// # Returns
+/// * `StateVector` - The propagated state vector in TEME coordinates
+///
+/// # Examples
+/// ```rust
+/// // Define SGP4 parameters
+/// let sgp4 = Sgp4::default();
+///
+/// // Define datetime to propagate to
+/// let datetime = DateTime::default();
+///
+/// // Propagate state vector
+/// let state_vector = sgp4_prop(sgp4, datetime);
+/// ```
 ///
 /// References
 /// - [Revisiting Spacetrack Report #3: Rev 3 by Vallado et al](https://celestrak.org/publications/AIAA/2006-6753/AIAA-2006-6753-Rev3.pdf)
 /// - [Fundamentals of Astrodynamics and Applications by Vallado et al](https://celestrak.org/software/vallado-sw.php)
 /// - [History of Analytical Orbit Modeling in the U.S. Space Surveillance System by Hoots et al](https://arc.aiaa.org/doi/abs/10.2514/1.9161?casa_token=pVowNFT6MOkAAAAA%3A_DFsBbZwGC2QcMWxPhJN2k3suNrcP5YzV7NVBYSvwMxGy19RzX-AvUnyO9JT5Cku0cDYPfpIQm4&journalCode=jgcd)
-// pub fn sgp4_prop(sgp4: Sgp4, datetime: DateTime) -> {
-//     // Convert datetime to Julian day format
-//     let (jd_prop, jdfrac_prop) = utc2jday(datetime).unwrap();
+pub fn sgp4_prop(sgp4: Sgp4, datetime: DateTime) -> StateVector{
+    // Convert datetime to Julian day format
+    let (jd_prop, jdfrac_prop) = utc2jday(datetime).unwrap();
 
-//     // Get minutes since epoch
-//     let delta_t = (jd_prop + jdfrac_prop - (sgp4.jd0 + sgp4.jdfrac0)) * 1440.;
+    // Get minutes since epoch
+    let delta_t = (jd_prop + jdfrac_prop - (sgp4.jd0 + sgp4.jdfrac0)) * 1440.;
 
-//     // Account for Earth zonal gravity and partial atmospheric drag effects
-//     let m_df = m0 + n0 * delta_t + m_dot * delta_t;
-//     let omega_df = omega0 + omega_dot * delta_t;
-//     let raan_df = raan0 + raan_dot * delta_t;
-//     let delta_omega = bstar * c3 * omega0.cos() * delta_t
-// }
+    // Create mutable variables for the orbital elements
+    let mut m = 0.;
+    let mut omega = 0.;
+    let mut raan = 0.;
+    let mut e = 0.;
+    let mut i = 0.;
+    let mut n = 0.;
+
+    // Account for Earth zonal gravity and partial atmospheric drag effects
+    let m_df = sgp4.brouwer0.m + sgp4.brouwer0.n * delta_t + sgp4.zonal_params.m_dot * delta_t;
+    let omega_df = sgp4.brouwer0.omega + sgp4.zonal_params.omega_dot * delta_t;
+    let raan_df = sgp4.brouwer0.raan + sgp4.zonal_params.raan_dot * delta_t;
+
+    // Neglect delta_omega and delta_m if deep space or perigee height is less than 220 km
+    let mut delta_omega = 0.;
+    let mut delta_m = 0.;
+    if sgp4.deep_space || sgp4.atm_params.hp < 220. {
+        delta_omega = 0.;
+        delta_m = 0.;
+    } else {
+        delta_omega = sgp4.atm_params.bstar * sgp4.atm_params.c3 * sgp4.brouwer0.omega.cos() * delta_t;
+        delta_m = (-2./3.) * (sgp4.atm_params.q0 - sgp4.atm_params.s).powi(4) * sgp4.tle.bstar * sgp4.atm_params.zeta.powi(4) * (1. / (sgp4.brouwer0.e * sgp4.atm_params.eta)) * ((1 + sgp4.atm_params.eta*m_df.cos()).powi(3) - (1 + sgp4.atm_params.eta*sgp4.brouwer0.m.cos()).powi(3));
+    }
+
+    m = m_df + delta_omega + delta_m;
+    omega = omega_df - delta_omega - delta_m;
+    raan = raan_df - (21./2.) * (sgp4.brouwer0.n * sgp4.atm_params.k2 * sgp4.brouwer0.theta / (sgp4.brouwer0.a.powi(2) * sgp4.brouwer0.beta.powi(2))) * sgp4.atm_params.c1 * delta_t.powi(2);
+
+    // Account for Lunar and Solar third body effects
+    if sgp4.deep_space {
+        m = m + (sgp4.lunar_params.m_dot + sgp4.solar_params.m_dot) * delta_t;
+        omega = omega + (sgp4.lunar_params.omega_dot + sgp4.solar_params.omega_dot) * delta_t;
+        raan = raan + (sgp4.lunar_params.raan_dot + sgp4.solar_params.raan_dot) * delta_t;
+        e = sgp4.brouwer0.e + (sgp4.lunar_params.e_dot + sgp4.solar_params.e_dot) * delta_t;
+        i = sgp4.brouwer0.i + (sgp4.lunar_params.i_dot + sgp4.solar_params.i_dot) * delta_t;
+    }
+
+    // Account for the whole and half day resonance effects of Earth's gravity
+    if sgp4.half_day_resonance {
+        // Calculate the auxilary variable and mean motion at the end of the time step using Euler-Maclaurin integration
+        let mut lami = sgp4.half_day_resonance_params.lam0;
+        let mut ni = sgp4.brouwer0.n;
+        let mut lami_dot = 0.;
+        let mut ni_dot = 0.;
+        let mut lami_ddot = 0.;
+        let mut ni_ddot = 0.;
+        let em_steps = (delta_t / 720.).ceil() as i32;
+        let t_em = delta_t - (em_steps * 720.);
+
+        // Propagate the auxilary variable and mean motion using Euler-Maclaurin integration
+        for _ in 0..em_steps {
+            let omegai = sgp4.brouwer0.omega + (sgp4.zonal_params.omega_dot + (sgp4.solar_params.omega_dot + sgp4.lunar_params.omega_dot)) * (em_steps + 1) * 720.;
+            (lami, ni, lami_dot, ni_dot, lami_ddot, ni_ddot) = half_day_euler_maclaurin_step(lami, ni, omegai, &sgp4.half_day_resonance_params);
+        }
+
+        // Calculate the auxilary variable and mean motion at the end of the time step using Euler integration
+        lami = lami + (lami_dot * t_em) + (0.5 * lami_ddot * t_em.powi(2));
+        ni = ni + (ni_dot * t_em) + (0.5 * ni_ddot * t_em.powi(2));
+
+        // Update the mean anomaly and mean motion
+        let theta_t = (sgp4.half_day_resonance_params.theta_g + RPTIM * delta_t).rem_euclid(2.0 * PI);
+        n = ni;
+        m = lami - 2 * raan + 2 * theta_t;
+    } else if sgp4.whole_day_resonance {
+        // Calculate the auxilary variable and mean motion at the end of the time step using Euler-Maclaurin integration
+        let mut lami = sgp4.whole_day_resonance_params.lam0;
+        let mut ni = sgp4.brouwer0.n;
+        let mut lami_dot = 0.;
+        let mut ni_dot = 0.;
+        let mut lami_ddot = 0.;
+        let mut ni_ddot = 0.;
+        let em_steps = (delta_t / 720.).ceil() as i32;
+        let t_em = delta_t - (em_steps * 720.);
+
+        // Propagate the auxilary variable and mean motion using Euler-Maclaurin integration
+        for _ in 0..em_steps {
+            (lami, ni, lami_dot, ni_dot, lami_ddot, ni_ddot) = whole_day_euler_maclaurin_step(lami, ni, &sgp4.whole_day_resonance_params);
+        }
+
+        // Calculate the auxilary variable and mean motion at the end of the time step using Euler integration
+        lami = lami + (lami_dot * t_em) + (0.5 * lami_ddot * t_em.powi(2));
+        ni = ni + (ni_dot * t_em) + (0.5 * ni_ddot * t_em.powi(2));
+
+        // Update the mean anomaly and mean motion
+        let theta_t = (sgp4.whole_day_resonance_params.theta_g + RPTIM * delta_t).rem_euclid(2.0 * PI);
+        n = ni;
+        m = lami - raan - omega + theta_t;
+    }
+
+    // Account for remaining atmospheric drag effects
+
+    // Account for long-period periodic effects of lunar and solar gravity
+
+    // Account for long-period periodic effects of Earth's gravity
+
+    // Account for short-period periodic effects of Earth's gravity
+
+    // Return position and velocity vectors in the TEME frame
+}
+
+/// Half day Euler-Maclaurin integration step
+///
+/// # Arguments
+/// * `lami` - The auxilary variable at time i
+/// * `ni` - The mean motion at time i
+/// * `omegai` - The argument of perigee at time i
+/// * `half_day_resonance_params` - The half day resonance parameters
+///
+/// # Returns
+/// * `lami_update` - The auxilary variable at time i+1
+/// * `ni_update` - The mean motion at time i+1
+/// * `lami_dot` - The rate of change of the auxilary variable at time i+1
+/// * `ni_dot` - The rate of change of the mean motion at time i+1
+/// * `lami_ddot` - The 2nd derivative of the auxilary variable at time i+1
+/// * `ni_ddot` - The 2nd derivative of the mean motion at time i+1
+///
+/// # Examples
+/// ```rust
+/// // Define auxilary variable at time i
+/// let lami = 0.0;
+///
+/// // Define mean motion at time i
+/// let ni = 0.0;
+///
+/// // Define half day resonance parameters
+/// let half_day_resonance_params = HalfDayResonanceParams::default();
+///
+/// // Calculate the auxilary variable and mean motion at time i+1
+/// let (lami_update, ni_update, lami_dot, ni_dot, lami_ddot, ni_ddot) = half_day_euler_maclaurin_step(lami, ni, &half_day_resonance_params);
+/// ```
+///
+/// References
+/// - [Fundamentals of Astrodynamics and Applications by Vallado et al](https://celestrak.org/software/vallado-sw.php)
+/// - [History of Analytical Orbit Modeling in the U.S. Space Surveillance System by Hoots et al](https://arc.aiaa.org/doi/abs/10.2514/1.9161?casa_token=pVowNFT6MOkAAAAA%3A_DFsBbZwGC2QcMWxPhJN2k3suNrcP5YzV7NVBYSvwMxGy19RzX-AvUnyO9JT5Cku0cDYPfpIQm4&journalCode=jgcd)
+pub fn half_day_euler_maclaurin_step(lami: f64, ni: f64, omegai: f64, half_day_resonance_params: &HalfDayResonanceParams) -> (f64, f64, f64, f64, f64, f64) {
+    // Precompute the steps
+    let delta_t = 720.; // [minutes]
+    let delta_t_squared = 518400.; // [minutes^2]
+
+    // Define constants
+    let g22 = 5.7686396;
+    let g32 = 0.95240898;
+    let g44 = 1.8014998;
+    let g52 = 1.0508330;
+    let g54 = 4.4108898;
+
+    // Calculate the rate of change of the auxilary variable
+    let lami_dot = ni + half_day_resonance_params.lam0_dot;
+
+    // Calculate the rate of change of the mean motion
+    let ni_dot_2201 = half_day_resonance_params.d2201 * ((2. - 2. * 0.) * omegai + 2. / 2. * lami - g22).sin();
+    let ni_dot_2211 = half_day_resonance_params.d2211 * ((2. - 2. * 1.) * omegai + 2. / 2. * lami - g22).sin();
+    let ni_dot_3210 = half_day_resonance_params.d3210 * ((3. - 2. * 1.) * omegai + 2. / 2. * lami - g32).sin();
+    let ni_dot_3222 = half_day_resonance_params.d3222 * ((3. - 2. * 2.) * omegai + 2. / 2. * lami - g32).sin();
+    let ni_dot_5220 = half_day_resonance_params.d5220 * ((5. - 2. * 2.) * omegai + 2. / 2. * lami - g52).sin();
+    let ni_dot_5232 = half_day_resonance_params.d5232 * ((5. - 2. * 3.) * omegai + 2. / 2. * lami - g52).sin();
+    let ni_dot_4422 = half_day_resonance_params.d4422 * ((4. - 2. * 2.) * omegai + 4. / 2. * lami - g44).sin();
+    let ni_dot_5421 = half_day_resonance_params.d5421 * ((5. - 2. * 2.) * omegai + 4. / 2. * lami - g54).sin();
+    let ni_dot_5433 = half_day_resonance_params.d5433 * ((5. - 2. * 3.) * omegai + 4. / 2. * lami - g54).sin();
+    let ni_dot_4410 = half_day_resonance_params.d4410 * ((4. - 2. * 1.) * omegai + 4. / 2. * lami - g44).sin();
+    let ni_dot = ni_dot_2201 + ni_dot_2211 + ni_dot_3210 + ni_dot_3222 + ni_dot_5220 + ni_dot_5232 + ni_dot_4422 + ni_dot_5421 + ni_dot_5433 + ni_dot_4410;
+
+    // Calculate the 2nd derivative of the auxilary variable
+    let lami_ddot = ni_dot;
+
+    // Calculate the 2nd derivative of the mean motion
+    let ni_ddot_2201 = 2. / 2. * half_day_resonance_params.d2201 * ((2. - 2. * 0.) * omegai + 2. / 2. * lami - g22).cos();
+    let ni_ddot_2211 = 2. / 2. * half_day_resonance_params.d2211 * ((2. - 2. * 1.) * omegai + 2. / 2. * lami - g22).cos();
+    let ni_ddot_3210 = 2. / 2. * half_day_resonance_params.d3210 * ((3. - 2. * 1.) * omegai + 2. / 2. * lami - g32).cos();
+    let ni_ddot_3222 = 2. / 2. * half_day_resonance_params.d3222 * ((3. - 2. * 2.) * omegai + 2. / 2. * lami - g32).cos();
+    let ni_ddot_5220 = 2. / 2. * half_day_resonance_params.d5220 * ((5. - 2. * 2.) * omegai + 2. / 2. * lami - g52).cos();
+    let ni_ddot_5232 = 2. / 2. * half_day_resonance_params.d5232 * ((5. - 2. * 3.) * omegai + 2. / 2. * lami - g52).cos();
+    let ni_ddot_4422 = 4. / 2. * half_day_resonance_params.d4422 * ((4. - 2. * 2.) * omegai + 4. / 2. * lami - g44).cos();
+    let ni_ddot_5421 = 4. / 2. * half_day_resonance_params.d5421 * ((5. - 2. * 2.) * omegai + 4. / 2. * lami - g54).cos();
+    let ni_ddot_5433 = 4. / 2. * half_day_resonance_params.d5433 * ((5. - 2. * 3.) * omegai + 4. / 2. * lami - g54).cos();
+    let ni_ddot_4410 = 4. / 2. * half_day_resonance_params.d4410 * ((4. - 2. * 1.) * omegai + 4. / 2. * lami - g44).cos();
+    let ni_ddot = lami_dot * (ni_ddot_2201 + ni_ddot_2211 + ni_ddot_3210 + ni_ddot_3222 + ni_ddot_5220 + ni_ddot_5232 + ni_ddot_4422 + ni_ddot_5421 + ni_ddot_5433 + ni_ddot_4410);
+
+    // Calculate the updated auxilary variable and mean motion
+    let lami_update = lami + lami_dot * delta_t + 0.5 * lami_ddot * delta_t_squared;
+    let ni_update = ni + ni_dot * delta_t + 0.5 * ni_ddot * delta_t_squared;
+
+    return (lami_update, ni_update, lami_dot, ni_dot, lami_ddot, ni_ddot);
+}
+
+/// Whole day Euler-Maclaurin integration step
+///
+/// # Arguments
+/// * `lami` - The auxilary variable at time i
+/// * `ni` - The mean motion at time i
+/// * `whole_day_resonance_params` - The whole day resonance parameters
+///
+/// # Returns
+/// * `lami_update` - The auxilary variable at time i+1
+/// * `ni_update` - The mean motion at time i+1
+/// * `lami_dot` - The rate of change of the auxilary variable at time i+1
+/// * `ni_dot` - The rate of change of the mean motion at time i+1
+/// * `lami_ddot` - The 2nd derivative of the auxilary variable at time i+1
+/// * `ni_ddot` - The 2nd derivative of the mean motion at time i+1
+///
+/// # Examples
+/// ```rust
+/// // Define auxilary variable at time i
+/// let lami = 0.0;
+///
+/// // Define mean motion at time i
+/// let ni = 0.0;
+///
+/// // Define whole day resonance parameters
+/// let whole_day_resonance_params = WholeDayResonanceParams::default();
+///
+/// // Calculate the auxilary variable and mean motion at time i+1
+/// let (lami_update, ni_update, lami_dot, ni_dot, lami_ddot, ni_ddot) = whole_day_euler_maclaurin_step(lami, ni, &whole_day_resonance_params);
+/// ```
+///
+/// References
+/// - [Fundamentals of Astrodynamics and Applications by Vallado et al](https://celestrak.org/software/vallado-sw.php)
+/// - [History of Analytical Orbit Modeling in the U.S. Space Surveillance System by Hoots et al](https://arc.aiaa.org/doi/abs/10.2514/1.9161?casa_token=pVowNFT6MOkAAAAA%3A_DFsBbZwGC2QcMWxPhJN2k3suNrcP5YzV7NVBYSvwMxGy19RzX-AvUnyO9JT5Cku0cDYPfpIQm4&journalCode=jgcd)
+pub fn whole_day_euler_maclaurin_step(lami: f64, ni: f64, whole_day_resonance_params: &WholeDayResonanceParams) -> (f64, f64, f64, f64, f64, f64) {
+    // Precompute the steps
+    let delta_t = 720.; // [minutes]
+    let delta_t_squared = 518400.; // [minutes^2]
+
+    // Calculate the rate of change of the auxilary variable
+    let lami_dot = ni + whole_day_resonance_params.lam0_dot;
+
+    // Calculate the rate of change of the mean motion 
+    let ni_dot_1 = whole_day_resonance_params.delta1 * (lami - whole_day_resonance_params.lam31).sin();
+    let ni_dot_2 = whole_day_resonance_params.delta2 * (2. * (lami - whole_day_resonance_params.lam22)).sin();
+    let ni_dot_3 = whole_day_resonance_params.delta3 * (3. * (lami - whole_day_resonance_params.lam33)).sin();
+    let ni_dot = ni_dot_1 + ni_dot_2 + ni_dot_3;
+
+    // Calculate the 2nd derivative of the auxilary variable
+    let lami_ddot = ni_dot;
+
+    // Calculate the 2nd derivative of the mean motion
+    let ni_ddot_1 = whole_day_resonance_params.delta1 * (lami - whole_day_resonance_params.lam31).cos();
+    let ni_ddot_2 = 2. * whole_day_resonance_params.delta2 * (2. * (lami - whole_day_resonance_params.lam22)).cos();
+    let ni_ddot_3 = 3. * whole_day_resonance_params.delta3 * (3. * (lami - whole_day_resonance_params.lam33)).cos();
+    let ni_ddot = lami_dot * (ni_ddot_1 + ni_ddot_2 + ni_ddot_3);
+
+    // Calculate the updated auxilary variable and mean motion
+    let lami_update = lami + lami_dot * delta_t + 0.5 * lami_ddot * delta_t_squared;
+    let ni_update = ni + ni_dot * delta_t + 0.5 * ni_ddot * delta_t_squared;
+
+    return (lami_update, ni_update, lami_dot, ni_dot, lami_ddot, ni_ddot);
+}
 
 // ----------
 // Unit Tests
